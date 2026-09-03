@@ -88,5 +88,122 @@ const GOALS = { repository: { issues: { nodes: [
   const j = JSON.parse(run(['read', '--json'], gh).out);
   check('blocked fold pulls blocker text from latest blocked: comment', j.goals[0].status === 'blocked' && j.goals[0].blocker === 'blocked: needs setup · owner: you');
 }
+// --- write verbs -----------------------------------------------------------------
+const JOURNAL = path.join(COMMON, 'orch', 'board-journal.jsonl');
+const BRIEF = path.join(SCRATCH, 'brief.md');
+fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nkill: 3 sessions\n');
+function ghStore() {
+  const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', state: 'open', open_issues: 0, closed_issues: 0 }],
+    issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null };
+  const FIELD = { F_S: ['status', 'Status'], F_R: ['priority', 'Priority'], F_P: ['pipeline', 'Pipeline'], F_F: ['feature', 'Feature'] };
+  const optName = (fid, oid) => Object.entries(CFG.optionIds[FIELD[fid][0]]).find(([, id]) => id === oid)[0];
+  const fv = i => st.items[i.node_id] ? [{ project: { id: 'PVT_1' }, fieldValues: { nodes: Object.entries(st.fields).filter(([k]) => k.startsWith(st.items[i.node_id] + ':')).map(([k, o]) => { const fid = k.split(':')[1]; return { name: optName(fid, o), field: { name: FIELD[fid][1] } }; }) } }] : [];
+  const node = i => ({ number: i.number, title: i.title, body: i.body, state: i.state.toUpperCase(), updatedAt: 'now', milestone: i.milestone ? st.milestones.find(m => m.number === i.milestone) : null,
+    labels: { nodes: i.labels }, assignees: { nodes: (i.assignees || []).map(login => ({ login })) }, projectItems: { nodes: fv(i) } });
+  const handlers = [
+    [/GET repos\/o\/r\/milestones/, () => st.milestones],
+    [/GET user$/, () => ({ login: 'me' })],
+    [/POST repos\/o\/r\/issues$/, b => { const n = st.next++; st.issues[n] = { number: n, id: 1000 + n, node_id: 'I_' + n, state: 'open', ...b, labels: (b.labels || []).map(x => ({ name: x })) }; return st.issues[n]; }],
+    [/GET repos\/o\/r\/issues\/(\d+)\/comments/, (b, k) => st.comments[k.match(/issues\/(\d+)/)[1]] || []],
+    [/POST repos\/o\/r\/issues\/(\d+)\/comments/, (b, k) => { const n = k.match(/issues\/(\d+)/)[1]; (st.comments[n] = st.comments[n] || []).push({ body: b.body }); return { id: 1 }; }],
+    [/POST repos\/o\/r\/issues\/(\d+)\/sub_issues/, (b, k) => { const p = Number(k.match(/issues\/(\d+)/)[1]); const child = Object.values(st.issues).find(i => i.id === b.sub_issue_id); st.parent[child.number] = p; return {}; }],
+    [/POST repos\/o\/r\/issues\/(\d+)\/labels/, (b, k) => { const i = st.issues[k.match(/issues\/(\d+)/)[1]]; for (const l of b.labels) if (!i.labels.some(x => x.name === l)) i.labels.push({ name: l }); return i.labels; }],
+    [/DELETE repos\/o\/r\/issues\/(\d+)\/labels\/(.+)/, (b, k) => { const m = k.match(/issues\/(\d+)\/labels\/(.+)$/); const i = st.issues[m[1]]; i.labels = i.labels.filter(x => x.name !== decodeURIComponent(m[2])); return null; }],
+    [/GET repos\/o\/r\/issues\/(\d+)$/, (b, k) => st.issues[k.match(/issues\/(\d+)/)[1]]],
+    [/PATCH repos\/o\/r\/issues\/(\d+)/, (b, k) => { const i = st.issues[k.match(/issues\/(\d+)/)[1]]; Object.assign(i, b); return i; }],
+    [/issue\(number/, v => { const i = st.issues[v.n]; return { repository: { issue: { id: i.node_id, databaseId: i.id, state: i.state.toUpperCase(), parent: st.parent[i.number] ? { number: st.parent[i.number] } : null, projectItems: { nodes: st.items[i.node_id] ? [{ id: st.items[i.node_id], project: { id: 'PVT_1' } }] : [] } } } }; }],
+    [/addProjectV2ItemById/, v => { st.items[v.c] = 'PI_' + v.c; return { addProjectV2ItemById: { item: { id: st.items[v.c] } } }; }],
+    [/updateProjectV2ItemFieldValue/, v => { st.fields[v.i + ':' + v.f] = v.o; return { updateProjectV2ItemFieldValue: { projectV2Item: { id: v.i } } }; }],
+    [/subIssues/, () => ({ repository: { issues: { nodes: Object.values(st.issues).filter(i => i.labels.some(l => l.name === 'orch:goal')).map(g => ({ ...node(g),
+      subIssues: { nodes: Object.values(st.issues).filter(c => st.parent[c.number] === g.number).map(node) } })) } } })],
+  ];
+  const gh = fakeGh(handlers);
+  const g = gh.graphql, r = gh.rest;
+  gh.graphql = (q, v) => { if (st.fail && st.fail(q)) throw new Error('simulated outage'); return g(q, v); };
+  gh.rest = (m, p, b) => { if (st.fail && st.fail(m + ' ' + p)) throw new Error('simulated outage'); return r(m, p, b); };
+  return { st, gh };
+}
+fs.rmSync(JOURNAL, { force: true });
+writeCfg(CFG);
+{
+  const { st, gh } = ghStore();
+  let r = run(['add-goal', '49', 'knowledge-gate', '--brief', BRIEF], gh);
+  check('add-goal creates orch:goal issue in milestone, BRIEF body, prints G<n>', r.code === 0 && r.out.trim() === 'G140' && st.issues[140].milestone === 49 && st.issues[140].body.startsWith('BRIEF') && st.issues[140].labels.some(l => l.name === 'orch:goal'));
+  check('goal on project with Status Todo', st.items['I_140'] && st.fields['PI_I_140:F_S'] === 's1');
+  r = run(['add-goal', 'backlog', 'someday', '--brief', BRIEF], gh);
+  check('backlog resolves to the backlog milestone', st.issues[141].milestone === 52);
+  r = run(['add-goal', 'nope', 'x', '--brief', BRIEF], gh);
+  check('unknown milestone refused', r.code === 1 && /milestone/.test(r.out));
+  r = run(['add-item', 'G140', 'write grammar', '--pipeline', 'Engine', '--outcome', 'canonical home'], gh);
+  const n1 = Number(r.out.trim());
+  check('add-item: sub-issue of goal, same milestone, marker + orch:item', r.code === 0 && st.parent[n1] === 140 && st.issues[n1].milestone === 49 && /<!-- orch-item -->$/.test(st.issues[n1].body) && st.issues[n1].labels.some(l => l.name === 'orch:item'));
+  check('add-item on project: Status Todo, Priority = first bucket (Now), Pipeline set', st.fields['PI_I_' + n1 + ':F_S'] === 's1' && st.fields['PI_I_' + n1 + ':F_R'] === 'r1' && st.fields['PI_I_' + n1 + ':F_P'] === 'p1');
+  r = run(['add-item', 'G140', 'grammar tests', '--bucket', 'Next', '--gate', 'GATE LIVE'], gh);
+  const n2 = Number(r.out.trim());
+  check('--bucket Next → Priority option r2; --gate in body', st.fields['PI_I_' + n2 + ':F_R'] === 'r2' && /\ngate: GATE LIVE\n/.test(st.issues[n2].body) && !st.issues[n2].labels.some(l => l.name.startsWith('orch:bucket')));
+  r = run(['add-item', 'G140', 'x', '--bucket', 'Someday'], gh);
+  check('unknown bucket refused, lists valid options', r.code === 1 && /Now, Next, Later/.test(r.out));
+  r = run(['move', String(n2), 'Later'], gh);
+  check('move sets Priority only', r.code === 0 && st.fields['PI_I_' + n2 + ':F_R'] === 'r3' && !st.comments[n2]);
+  run(['move', String(n2), 'Next'], gh);
+  r = run(['add-item', 'G140', 'run /orch:setup', '--you'], gh);
+  const ny = Number(r.out.trim());
+  check('--you: orch:you + assignee, still a sub-issue', st.issues[ny].labels.some(l => l.name === 'orch:you') && st.issues[ny].assignees[0] === 'me' && st.parent[ny] === 140);
+  r = run(['set-status', String(n1), 'In progress'], gh);
+  check('set-status sets field and comments with opId', st.fields['PI_I_' + n1 + ':F_S'] === 's2' && /<!-- opId:/.test(st.comments[n1][0].body));
+  r = run(['set-blocker', String(n2), 'needs setup', '--owner', 'you'], gh);
+  check('set-blocker adds label + blocked: comment', st.issues[n2].labels.some(l => l.name === 'orch:blocked') && st.comments[n2][0].body.startsWith('blocked: needs setup · owner: you'));
+  let b = JSON.parse(run(['read', '--json'], gh).out);
+  check('read folds G140 blocked with blocker text', b.goals[0].lane === 'G140' && b.goals[0].status === 'blocked' && b.goals[0].blocker === 'blocked: needs setup · owner: you');
+  check('read reports buckets from Priority and the gate item', b.goals[0].items.find(i => i.issue === n1).bucket === 'Now' && b.goals[0].items.find(i => i.issue === n2).bucket === 'Next' && b.goals[0].items.find(i => i.issue === n2).gate === 'GATE LIVE');
+  r = run(['clear-blocker', String(n2)], gh);
+  check('clear-blocker removes label, comments unblocked', !st.issues[n2].labels.some(l => l.name === 'orch:blocked') && st.comments[n2][1].body.startsWith('unblocked'));
+  r = run(['done', String(n1)], gh);
+  check('done → Status Done + closed', st.fields['PI_I_' + n1 + ':F_S'] === 's4' && st.issues[n1].state === 'closed');
+  r = run(['close-goal', 'G140', '--evidence', 'iter 3 · G140 · 10 → 2'], gh);
+  check('close-goal refuses while items are open', r.code === 1 && /open item/.test(r.out) && st.issues[140].state === 'open');
+  run(['done', String(n2)], gh); run(['done', String(ny)], gh);
+  r = run(['close-goal', 'G140'], gh);
+  check('close-goal refuses without --evidence', r.code === 1 && /evidence/.test(r.out));
+  r = run(['close-goal', 'G140', '--evidence', 'iter 3 · G140 · 10 → 2'], gh);
+  check('close-goal: evidence comment on goal, Status Done, closed', r.code === 0 && st.comments[140].some(c => /^evidence: iter 3 · G140/.test(c.body)) && st.fields['PI_I_140:F_S'] === 's4' && st.issues[140].state === 'closed');
+  b = JSON.parse(run(['read', '--json'], gh).out);
+  check('read folds merged', b.goals[0].status === 'merged');
+  check('journal has no pending after clean run', require('../scripts/lib/journal').openJournal(JOURNAL).pending().length === 0);
+}
+// --- outage: intent stays pending, step fails, next verb resumes -------------------
+{
+  const { st, gh } = ghStore();
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  st.fail = s => /POST repos\/o\/r\/issues$/.test(s);
+  const r = run(['add-item', 'G140', 'flaky item'], gh);
+  check('outage → non-zero exit, item not created', r.code === 1 && Object.keys(st.issues).length === 1);
+  const pend = require('../scripts/lib/journal').openJournal(JOURNAL).pending();
+  check('createIssue intent left pending', pend.length === 1 && pend[0].subEffect === 'createIssue');
+  st.fail = null;
+  const r2 = run(['add-item', 'G140', 'second item'], gh);
+  check('next verb replays pending first: both items exist, flaky created once', r2.code === 0 && Object.values(st.issues).filter(i => st.parent[i.number] === 140).map(i => i.title).sort().join() === 'flaky item,second item');
+  check('journal drained', require('../scripts/lib/journal').openJournal(JOURNAL).pending().length === 0);
+}
+// --- resume probes are idempotent: comment landed, done record lost ----------------
+{
+  const { st, gh } = ghStore();
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  const num = Number(run(['add-item', 'G140', 'once'], gh).out.trim());
+  const { openJournal } = require('../scripts/lib/journal');
+  openJournal(JOURNAL).intent({ opId: 'op-crash', lane: 'G140', subEffect: 'comment', desired: { issue: num, body: 'status → In progress' } });
+  (st.comments[num] = st.comments[num] || []).push({ body: 'status → In progress\n<!-- opId:op-crash -->' });
+  run(['set-status', String(num), 'In review'], gh);
+  check('comment with matching opId is NOT re-posted', st.comments[num].filter(c => /opId:op-crash/.test(c.body)).length === 1);
+  check('crash intent now recorded done', openJournal(JOURNAL).pending().length === 0);
+}
+// --- lock authority -----------------------------------------------------------------
+{
+  const { gh } = ghStore();
+  const r1 = run(['add-goal', '49', 'z', '--brief', BRIEF], gh, { lockCfg: { __repoLocked: true, board: { github: false } } });
+  check('locked repo without board.github → refuse', r1.code === 1 && /board\.github/.test(r1.out));
+  const r2 = run(['add-goal', '49', 'z', '--brief', BRIEF], gh, { lockCfg: { __repoLocked: true, board: { github: true } } });
+  check('locked repo with board.github → allowed', r2.code === 0);
+}
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();
