@@ -52,7 +52,7 @@ Native fallback — exactly three questions, one at a time:
    `node "<plugin>/scripts/board-gh.js" milestones` and offer the open
    ones (`C<n> …` first, then `backlog`). Milestones are the operator's;
    never create one. Write the BRIEF to `tmp/worklogs/_brief.md` first.
-2. Register: `add-goal <milestone#> "<name>" --brief tmp/worklogs/_brief.md`
+2. Register: `add-goal <milestone#|backlog|none> "<name>" --brief tmp/worklogs/_brief.md`
    prints the lane `G<n>` (the goal issue's number — unique, never
    reused). Rename the worklog to `tmp/worklogs/G<n>-<name>.md`; the
    goal is `G<n> · <name>` everywhere from here on. Prefer a short
