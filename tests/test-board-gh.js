@@ -103,6 +103,9 @@ function ghStore() {
   const handlers = [
     [/GET repos\/o\/r\/milestones/, () => st.milestones],
     [/GET user$/, () => ({ login: 'me' })],
+    // identity probe: all orch issues with the given label, newest first
+    [/GET repos\/o\/r\/issues\?/, (b, k) => { const l = decodeURIComponent(k.match(/labels=([^&]*)/)[1]);
+      return Object.values(st.issues).filter(i => i.labels.some(x => x.name === l)).sort((a, c) => c.number - a.number); }],
     [/POST repos\/o\/r\/issues$/, b => { const n = st.next++; st.issues[n] = { number: n, id: 1000 + n, node_id: 'I_' + n, state: 'open', ...b, labels: (b.labels || []).map(x => ({ name: x })) }; return st.issues[n]; }],
     [/GET repos\/o\/r\/issues\/(\d+)\/comments/, (b, k) => st.comments[k.match(/issues\/(\d+)/)[1]] || []],
     [/POST repos\/o\/r\/issues\/(\d+)\/comments/, (b, k) => { const n = k.match(/issues\/(\d+)/)[1]; (st.comments[n] = st.comments[n] || []).push({ body: b.body }); return { id: 1 }; }],
@@ -196,6 +199,29 @@ writeCfg(CFG);
   run(['set-status', String(num), 'In review'], gh);
   check('comment with matching opId is NOT re-posted', st.comments[num].filter(c => /opId:op-crash/.test(c.body)).length === 1);
   check('crash intent now recorded done', openJournal(JOURNAL).pending().length === 0);
+}
+// --- crash AFTER createIssue landed, before its done record ------------------------
+// The orphan has no parent link yet, so readBoard cannot see it; only the opId
+// marker in its body identifies it. Replay must adopt it, not create a twin.
+{
+  const { st, gh } = ghStore();
+  const { bodyOf } = require('../scripts/board-gh');
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  const text = 'crashed item';
+  const body = bodyOf(text).replace(/<!-- orch-item -->$/, '<!-- opId:A:0 -->\n<!-- orch-item -->');
+  st.issues[141] = { number: 141, id: 1141, node_id: 'I_141', state: 'open', title: text, body, milestone: 49, labels: [{ name: 'orch:item' }] };
+  st.next = 142; // orphan: no sub-issue link, not on the project, no fields
+  const args = { goal: 140, lane: 'G140', title: text, text, body: bodyOf(text), labels: ['orch:item'], milestoneNumber: 49,
+    bucket: 'Now', pipeline: null, feature: null, assignee: null };
+  openJournal(JOURNAL).intent({ opId: 'A:0', actionId: 'A', lane: 'G140', subEffect: 'createIssue', action: { name: 'add-item', args },
+    desired: { goal: 140, title: text, text, body: args.body, labels: args.labels, milestoneNumber: 49, assignee: null } });
+  const r = run(['add-item', 'G140', 'another'], gh);
+  check('crash after create: orphan adopted, no duplicate issue', r.code === 0 && Object.values(st.issues).filter(i => i.title === text).length === 1);
+  check('crash after create: orphan linked + on project with Status Todo, Priority Now',
+    st.parent[141] === 140 && st.items['I_141'] === 'PI_I_141' && st.fields['PI_I_141:F_S'] === 's1' && st.fields['PI_I_141:F_R'] === 'r1');
+  check('crash after create: journal drained, new item wired too', openJournal(JOURNAL).pending().length === 0 && st.parent[Number(r.out.trim())] === 140);
 }
 // --- lock authority -----------------------------------------------------------------
 {

@@ -36,7 +36,8 @@ function loadCfg(cwd) {
 }
 
 function parseBody(body) {
-  const lines = (body || '').split(/\r?\n/).filter(l => l.trim() !== MARK);
+  // The opId marker is identity metadata (spec §4.3), never board content.
+  const lines = (body || '').split(/\r?\n/).filter(l => l.trim() !== MARK && !/^<!-- opId:.* -->$/.test(l.trim()));
   const grab = re => { const m = lines.map(l => l.match(re)).find(Boolean); return m ? m[1].trim() : null; };
   return { text: (lines[0] || '').trim(), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i) };
 }

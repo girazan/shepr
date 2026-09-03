@@ -2,19 +2,19 @@
 // apply(rec): probe remote → already satisfied? journal done : do call →
 // journal done. Pending intents from earlier crashes replay first.
 //
-// Every mutating verb is journaled at TWO levels (spec §4.3 ruling): an
-// action-level record (subEffect:'action', desired:{name,args}) wraps the
-// whole verb invocation so a crash mid-verb can be resumed by re-running the
-// same ACTIONS[name] function — not just the one sub-effect that happened to
-// be in flight — with deterministic per-call opIds (`${actionId}:${i}`) so
-// every sub-effect it re-issues is found idempotently by FX's remote probes
-// instead of re-created.
+// Every sub-effect record carries the whole verb invocation it belongs to
+// (`actionId` + `action:{name,args}`), so a crash mid-verb is resumed by
+// re-running the same ACTIONS[name] function — not just the one sub-effect
+// that happened to be in flight — with deterministic per-call opIds
+// (`${actionId}:${i}`) so every sub-effect it re-issues is found idempotently
+// by FX's remote probes instead of re-created. The opId marker in an issue
+// body / comment is the idempotency key.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
 function write(ctx) {
-  const { verb, pos, opt, cfg, gh, stdout, commonDir, readBoard, bodyOf, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
+  const { verb, pos, opt, cfg, gh, stdout, commonDir, readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
   const say = s => stdout(s + '\n');
   const lockCfg = ctx.lockCfg || require('../hooks/lib/config').loadConfig({ cwd: ctx.cwd || process.cwd() });
   if (lockCfg.__repoLocked && !(lockCfg.board && lockCfg.board.github === true)) {
@@ -31,19 +31,34 @@ function write(ctx) {
   }
   function projectItem(n) { const i = issueNode(n); const pi = i.projectItems.nodes.find(x => x.project.id === cfg.projectId); return { node: i, itemId: pi ? pi.id : null }; }
 
+  // Identity of an orch-created issue is its opId marker in the BODY — nothing
+  // else survives a crash between the POST and its journal `done` record. A
+  // just-created item has no parent link yet, so readBoard (sub-issues only)
+  // cannot see it; a name/text match is not identity either.
+  // ponytail: 100-issue probe window (newest first); paginate when a repo has
+  // >100 open+closed orch issues.
+  // Item bodies must keep `<!-- orch-item -->` as their last line, so the opId
+  // marker goes just above it; goal bodies simply get it appended.
+  const stamp = (body, opId) => (body.endsWith(MARK) ? body.slice(0, -MARK.length) + opTag(opId).slice(1) + '\n' + MARK : body + opTag(opId));
+
+  function createdBy(opId, label) {
+    const seen = gh.rest('GET', `${R}/issues?state=all&labels=${label}&per_page=100&sort=created&direction=desc`) || [];
+    const hit = seen.find(i => (i.body || '').includes(`<!-- opId:${opId} -->`));
+    return hit ? hit.number : null;
+  }
+
   const FX = {
-    createGoal(d) {
-      const hit = readBoard(gh, cfg).goals.find(g => g.name === d.title && g.status !== 'merged' && ((g.milestone && g.milestone.number) || null) === (d.milestoneNumber || null));
-      if (hit) return hit.issue;
-      const body = { title: d.title, body: d.body, labels: ['orch:goal'] };
+    createGoal(d, opId) {
+      const already = createdBy(opId, 'orch:goal');
+      if (already) return already;
+      const body = { title: d.title, body: stamp(d.body, opId), labels: ['orch:goal'] };
       if (d.milestoneNumber) body.milestone = d.milestoneNumber;
       return gh.rest('POST', `${R}/issues`, body).number;
     },
-    createIssue(d) {
-      const g = readBoard(gh, cfg).goals.find(x => x.issue === d.goal);
-      const hit = g && g.items.find(i => i.text === d.text);
-      if (hit) return hit.issue;
-      const body = { title: d.title, body: d.body, labels: d.labels };
+    createIssue(d, opId) {
+      const already = createdBy(opId, 'orch:item');
+      if (already) return already;
+      const body = { title: d.title, body: stamp(d.body, opId), labels: d.labels };
       if (d.milestoneNumber) body.milestone = d.milestoneNumber;
       if (d.assignee) body.assignees = [d.assignee];
       return gh.rest('POST', `${R}/issues`, body).number;
