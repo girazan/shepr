@@ -157,7 +157,9 @@ if (CG) {
     try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
     const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
     if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
-    const text = git(root0, ['show', `HEAD:${wl}`]);
+    let text = '';
+    try { text = git(root0, ['show', `HEAD:${wl}`]); }
+    catch { block(`close-goal: cannot read ${wl} at HEAD`); }
     const ev = cmd.match(/--evidence\s+(?:"([^"]+)"|'([^']+)'|(\S+))/) || [];
     const evidence = ev[1] || ev[2] || ev[3] || '';
     if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text) && !(evidence && text.includes(evidence))) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);

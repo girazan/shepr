@@ -38,6 +38,7 @@ g(['add', '-f', 'tmp/worklogs/G142-kg.md']); g(['commit', '-qm', 'ledger']);
 check('ledger line at HEAD → ALLOW', run(CMD) === 0);
 check('other goal still blocked', run(CMD.replace(/G142/g, 'G7')) === 2);
 check('read verb untouched', run('node scripts/board-gh.js read --json') === 0);
+check('boundary: G14 does not match G142-*.md file', run(CMD.replace(/G142/g, 'G14')) === 2);
 const audit = fs.readFileSync(path.join(PROJ, '.claude', 'orch-audit.jsonl'), 'utf8');
 check('ALLOW audited with lane', /"action":"close-goal".*"lane":"G142".*"verdict":"ALLOW"/.test(audit));
 console.log(`\n${pass} passed, ${fail} failed`);
