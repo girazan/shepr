@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `scripts/board-gh.js` — GitHub Issues + Projects v2 are the board (spec §4 r8d). Milestone (operator's, `C<n> …`) → goal = `orch:goal` issue `G<n>` → items = sub-issues; buckets = the Project's `Priority` options (`Now/Next/Later` after the operator renames them). Verbs: init (`--project N` adopts), milestones, add-goal, add-item, move, set-status, set-blocker, clear-blocker, done, close-goal, read. Lock + fsynced journal; idempotent resume.
+- `.orch/board.json` per repo; `board.github` lock key.
+- ship-gate: `close-goal G<n>` requires a ledger line naming `G<n>` in `tmp/worklogs/G<n>-*.md` at HEAD.
+- `board-html.js --json`.
+### Changed
+- Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
+### Removed
+- `docs/BOARD.md` as a board store. `/orch:setup` deletes it; nothing is imported.
+
 ## 0.7.0 — 2026-08-31
 
 - Contract schema 2: optional per-domain `tiers: { work, review }` model-tier
@@ -19,7 +31,7 @@
 - Spec: `docs/specs/2026-08-31-orch-v2-upgrade-design.md`.
 
 ## 0.6.0 — 2026-08-29
-- Numbered lanes: campaigns get stable `C<n>` identity through goal/go/delegate.
+- Numbered lanes: goals get stable `G<n>` identity through goal/go/delegate.
 - `/orch:board` — read-only route-map command (buckets × lanes, YOU track, gates, queue).
 - `scripts/board-html.js` — self-contained HTML board export from ROUTE grammar.
 
@@ -27,7 +39,7 @@
 - Fleet context watchdog (`fleet-context` hook) + delegate kill/restart doctrine.
 
 ## 0.4.0 — 2026-08-28
-- Vocabulary unification: campaign, lane, worklog, contract (rename table in README).
+- Vocabulary unification: goal, lane, worklog, contract (rename table in README).
 
 ## 0.3.x — 2026-08-28
 - The decision contract: `.claude/orch.json` domains, deny-by-default `contract-ship-gate`,

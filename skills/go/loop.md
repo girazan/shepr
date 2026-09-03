@@ -19,7 +19,7 @@ Refuse to launch until all five hold (any ✗ → fix the prompt file first):
    tolerance vs noise band · measurement protocol · abort conditions.
 
 In-loop: structure/contract-shaped calls → proposed ADR; if the work
-depends on the answer, park the campaign and continue elsewhere. The
+depends on the answer, park the goal and continue elsewhere. The
 ship-gate caps what the loop lands regardless of what it believes.
 
 Launch journal, in the worklog:

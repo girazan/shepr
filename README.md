@@ -64,7 +64,7 @@ One file, `.claude/orch.json`, at your repo root:
 | 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, ratifies ADRs |
 | 🎯 `/orch:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
 | 🚦 `/orch:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says |
-| 📊 `/orch:board` | whenever you want to look | read-only route map: buckets × lanes, the YOU owner lane, stale flags, metric positions, ADR ages, today's queue — plus `html` for a shareable page |
+| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init adopts an existing Project (`/orch:board init [--project N]`), renames its `Priority` buckets (`Now/Next/Later`), fsyncs journal. Read-only after init; requires GitHub (no offline fallback). `html` for a shareable page. |
 
 There is no bare `/orch` — always one of these four. [Architecture diagram →](docs/orch-architecture.html)
 
@@ -122,8 +122,8 @@ never silently disable a guard.
 
 ## 📖 Glossary
 
-**campaign** one ongoing piece of work (workstream) · **board** the status
-table, one row per campaign (kanban) · **worklog** a campaign's running notebook ·
+**goal** one ongoing piece of work (workstream), an orch:goal issue `G<n>` on the board · **milestone** GitHub's top-level Milestone set by operator (`C<n> …`, never created by orch) · **board** the status
+table, one goal per lane (kanban, GitHub Issues + Projects v2) · **worklog** a goal's running notebook ·
 **ledger line** one-line summary of one work round · **review ladder**
 staged checking, cheap → expensive (quality gates) · **merge gate** the
 three questions before keeping a change (definition of done) · **noise
@@ -133,7 +133,7 @@ nicely (policy-as-code) · **contract** your map of who decides and who
 ships (decision rights / RACI) · **ADR** architecture decision record ·
 **ship grant** how far the AI may push on its own (deploy permission).
 
-**Renamed in v0.4.0** (if you saw the earlier version): front → campaign ·
+**Renamed in v0.4.0** (if you saw the earlier version): front → goal ·
 dossier → worklog · hook wall → guardrails · judge independence → independent
 reviewer · fact-force → read-before-write (config key `factForce` still
 works, with a notice).

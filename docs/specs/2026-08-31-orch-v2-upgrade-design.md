@@ -225,8 +225,8 @@ an unanchored `Task` regex would catch `TaskCreate`/`TaskUpdate`).
 `<git-common-dir>/orch/route-<sessionId>.json`, atomic write:
 
 ```json
-{ "lane": "C3", "domains": ["numerics", "hmi"],
-  "worklog": "tmp/worklogs/C3-HDS.md",
+{ "lane": "G142", "domains": ["numerics", "hmi"],
+  "worklog": "tmp/worklogs/G142-HDS.md",
   "repo": "<toplevel path>", "contractRevision": 7,
   "routedAt": "<iso>" }
 ```
@@ -356,15 +356,15 @@ branch-name-only source let a mis-named branch bind evidence to the
 wrong lane):** the *expected* lane comes from **two independent
 sources that must agree**, not the branch name alone: (a) the current
 branch name is required to carry the lane as its first path segment
-(`C3/<slug>`, enforced by the same ship phase that writes commits — a
+(`G142/<slug>`, enforced by the same ship phase that writes commits — a
 branch not shaped this way cannot reach `gh pr create` under the
 contract at all, BLOCK "branch must start with the lane, e.g.
-`C3/...`"), and (b) this session's route record (§2.1) has a `lane`
+`G142/...`"), and (b) this session's route record (§2.1) has a `lane`
 field written at route time, independent of and prior to any branch
-name choice. `gh pr create` → BLOCK "branch lane `C<n>` does not match
-routed lane `C<m>`" if (a) and (b) disagree, or if no route record
+name choice. `gh pr create` → BLOCK "branch lane `G<n>` does not match
+routed lane `G<m>`" if (a) and (b) disagree, or if no route record
 exists for this session. Only once both agree does the hook proceed to
-the GATE scan. The ship phase then appends `<!-- orch-lane:C3 -->` as
+the GATE scan. The ship phase then appends `<!-- orch-lane:G142 -->` as
 the last line of the GATE block (same HTML-comment marker style as §4's
 issue identity) at evidence-commit time — this is normative and now included
 in the GATE grammar shown under Evidence protocol below. **Selection
@@ -377,7 +377,7 @@ copy — matches Evidence protocol's existing rule) and finds the last
 `GATE:` block in that file, by byte position, whose `orch-lane` marker
 matches the agreed expected lane — file position is well-ordered and
 requires no commit-DAG reasoning, unlike "latest in the range." Zero
-such block → BLOCK "no GATE for lane `C<n>` in the worklog." Found →
+such block → BLOCK "no GATE for lane `G<n>` in the worklog." Found →
 that single block is validated against §"Evidence protocol"'s
 `subject:`-ancestor and evidence-only-tail checks; a **multiple-blocks
 in the range** situation (r5's original concern — a review-fix cycle
@@ -400,7 +400,7 @@ GATE: subject:<code commit SHA>
 regression: <suite verdict ref>
 metric:     <before → after vs noise band>
 rootcause:  <ruling/ADR ref>
-<!-- orch-lane:C3 -->
+<!-- orch-lane:G142 -->
 ```
 
 3. At `gh pr create`, the hook reads the worklog **from HEAD's tree**
@@ -519,10 +519,10 @@ dispatch/teardown/rebrief entries).
 
 ```json
 { "delegates": [ {
-  "name": "impl-C3", "lane": "C3", "role": "mid", "vehicle": "native",
+  "name": "impl-G142", "lane": "G142", "role": "mid", "vehicle": "native",
   "status": "reserved|running|done|failed|torn-down|expired|rejected",
   "ownerSessionId": "<id>", "agentId": "<runtime id, bound at start>",
-  "brief": "tmp/worklogs/C3-HDS.md#brief-4",
+  "brief": "tmp/worklogs/G142-HDS.md#brief-4",
   "createdAt": "<iso>", "lastSeen": "<iso>" } ] }
 ```
 
@@ -594,7 +594,7 @@ capacity.)
 | Work shape | native | herdr |
 |---|---|---|
 | one-shot | `Agent` throwaway | same |
-| resident | background `Agent` + `SendMessage`, worklog as memory | herdr pane (`impl-C3`) |
+| resident | background `Agent` + `SendMessage`, worklog as memory | herdr pane (`impl-G<n>`) |
 | DAG fan-out | `Workflow` — only with floor `low` AND capacity ≥ 16 (§2.1) | falls back to native |
 
 Herdr delegates register with `vehicle: "herdr"`; herdr launches go
@@ -631,7 +631,7 @@ Pertasim's milestones (`C1 SHU-HDS operable`, 60 issues; `C2 …`;
 `C3 …`; `backlog` = "not scheduled") are the top level. A `/orch:goal`
 BRIEF with its 3–7 route items is not that — it is a **goal inside a
 milestone**. orch adopts GitHub's word (r8d — operator's call: "call it
-milestone in orch", not campaign). Hence:
+milestone in orch"). Hence:
 
 ```
 Milestone  = GitHub Milestone "C<n> …"   operator-owned; orch NEVER creates one
@@ -678,10 +678,9 @@ Stale detection (`board.staleDays`) uses each issue's `updatedAt`.
 The Project's own `Sub-issues progress` field shows completion for free.
 
 **Lane grammar everywhere else in this spec (§2.1 route record, §2.2
-branch prefix and `orch-lane` marker, worklog names):** `C<n>` becomes
-`G<issue#>` — `tmp/worklogs/G142-<name>.md`, branch `G142/<slug>`,
-`<!-- orch-lane:G142 -->`. Examples in §2 still read `C3`; substitute
-`G<n>`. `C<n>` is reserved for milestone titles.
+branch prefix and `orch-lane` marker, worklog names):** goals are identified
+as `G<issue#>` — `tmp/worklogs/G<n>-<name>.md`, branch `G<n>/<slug>`,
+`<!-- orch-lane:G<n> -->`. `C<n>` is reserved for milestone titles.
 
 **Evidence-before-done:** `close-goal` refuses unless (a) every
 sub-issue is `Done`/closed and (b) an `evidence:` comment naming
