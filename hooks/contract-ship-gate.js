@@ -140,6 +140,32 @@ if (loadLock().corrupt) {
   process.exit(2);
 }
 
+// board-gh close-goal (spec §4.1 "Evidence-before-done" / §2.3 at v0.10):
+// evidence must already be committed — a ledger line naming the goal in
+// that goal's worklog AT HEAD. Git only; no network.
+const CG = cmd.match(/board-gh(?:\.js)?\s+close-goal\s+(G\d+)\b/i);
+if (CG) {
+  const lane = CG[1].toUpperCase();
+  const cwd0 = (j && j.cwd) || process.cwd();
+  let root0 = null;
+  try { root0 = git(cwd0, ['rev-parse', '--show-toplevel']).trim(); } catch {}
+  const cfg0 = loadConfig({ cwd: root0 || cwd0 });
+  const active = cfg0.contract && cfg0.contract.domains && Object.keys(cfg0.contract.domains).length;
+  if (active && root0) {
+    const block = reason => { appendAudit(root0, { action: 'close-goal', lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
+    let files = [];
+    try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
+    const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
+    if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
+    const text = git(root0, ['show', `HEAD:${wl}`]);
+    const ev = cmd.match(/--evidence\s+(?:"([^"]+)"|'([^']+)'|(\S+))/) || [];
+    const evidence = ev[1] || ev[2] || ev[3] || '';
+    if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text) && !(evidence && text.includes(evidence))) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
+    appendAudit(root0, { action: 'close-goal', lane, verdict: 'ALLOW', by: 'hook' });
+  }
+  process.exit(0);
+}
+
 const cls = cmd ? classify(cmd) : { action: 0, denied: null, retarget: false };
 if (!oversized && cls.action === 0 && !cls.denied) process.exit(0);
 
