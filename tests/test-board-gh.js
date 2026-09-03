@@ -76,9 +76,9 @@ const GOALS = { repository: { issues: { nodes: [
   check('items carry bucket(Priority)/pipeline/outcome/gate/you', j.goals[0].items[0].bucket === 'Now' && j.goals[0].items[0].pipeline === 'Engine' && j.goals[0].items[0].outcome === 'canonical home' && j.goals[0].items[1].bucket === 'Next' && j.goals[0].items[1].gate === 'GATE LIVE' && j.goals[0].items[2].you === true);
   check('unset Priority → first bucket', j.goals[0].items[2].bucket === 'Now');
   check('closed goal folds merged, null milestone sorts last', j.goals[1].lane === 'G99' && j.goals[1].status === 'merged' && j.goals[1].milestone === null);
+  check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
   check('--goal filters', JSON.parse(run(['read', '--json', '--goal', 'G99'], gh).out).goals.length === 1);
   check('buckets = Priority options in order', j.buckets.join() === 'Now,Next,Later');
-  check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
 }
 {
   const blocked = JSON.parse(JSON.stringify(GOALS));

@@ -101,10 +101,8 @@ function main(argv, deps = {}) {
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
   if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
   if (verb === 'read') {
-    const cacheKey = `__board_${cfg.owner}_${cfg.repo}`;
-    if (!gh[cacheKey]) gh[cacheKey] = readBoard(gh, cfg);
-    let b = gh[cacheKey];
-    if (opt.goal) b = { goals: b.goals.filter(g => g.lane === String(opt.goal).toUpperCase()), buckets: b.buckets };
+    const b = readBoard(gh, cfg);
+    if (opt.goal) b.goals = b.goals.filter(g => g.lane === String(opt.goal).toUpperCase());
     stdout(JSON.stringify(b, null, opt.json ? 0 : 2) + '\n');
     return 0;
   }
