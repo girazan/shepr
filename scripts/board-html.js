@@ -8,41 +8,50 @@ const fs = require('fs');
 const path = require('path');
 
 const args = process.argv.slice(2);
-const [boardPath, outPath] = args;
 function opt(name) { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : null; }
+const jsonPath = opt('json');
+const positional = args.filter((a, i) => !a.startsWith('--') && (i === 0 || !args[i - 1].startsWith('--')));
+const [boardPath, outPath] = jsonPath ? [null, positional[0]] : positional;
 
-let board;
-try { board = fs.readFileSync(boardPath, 'utf8'); }
-catch (e) { console.error('board-html: cannot read ' + boardPath); process.exit(1); }
-
-// --- parse ---------------------------------------------------------------
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const lines = board.split(/\r?\n/);
-const routeAt = lines.findIndex(l => /^##\s*ROUTE\b/i.test(l));
-let buckets = [], items = [], malformed = 0;
-if (routeAt >= 0) {
-  for (let i = routeAt + 1; i < lines.length; i++) {
-    const l = lines[i].trim();
-    if (/^##\s/.test(l)) break;
-    if (!l) continue;
-    const bm = l.match(/^buckets:\s*(.+)$/i);
-    if (bm) { buckets = bm[1].split('·').map(s => s.trim()).filter(Boolean); continue; }
-    const parts = l.split('|').map(s => s.trim());
-    if (parts.length < 3 || !/^(C\d+|YOU)$/i.test(parts[0])) { malformed++; continue; }
-    const extra = parts[3] || '';
-    items.push({
-      lane: parts[0].toUpperCase(), bucket: parts[1],
-      done: parts[2].startsWith('✓'), text: parts[2].replace(/^✓\s*/, ''),
-      outcome: (extra.match(/^->\s*(.+)$/) || [])[1] || null,
-      milestone: (extra.match(/^milestone:\s*(.+)$/i) || [])[1] || null,
-    });
-  }
-}
-// Board-table rows: "| C3 · name | ... status ..." — loose, optional.
+let buckets = [], items = [], malformed = 0, lines = [];
 const laneNames = {}, laneStatus = {};
-for (const l of lines) {
-  const m = l.match(/^\|\s*(C\d+)\s*·\s*([^|]+?)\s*\|(.*)\|?$/);
-  if (m) { laneNames[m[1]] = m[2].trim(); laneStatus[m[1]] = (m[3].split('|')[0] || '').trim(); }
+if (jsonPath) {
+  // Input = `board-gh read` JSON (spec §4.3); GitHub is the board. The
+  // renderer's internal `milestone` key = the item's `gate:` label.
+  let b;
+  try { b = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); }
+  catch (e) { console.error('board-html: cannot read ' + jsonPath); process.exit(1); }
+  buckets = b.buckets || [];
+  for (const g of b.goals || []) {
+    laneNames[g.lane] = g.name + (g.milestone ? ` · ${g.milestone.title}` : '');
+    laneStatus[g.lane] = g.status + (g.blocker ? ` — ${g.blocker}` : '');
+    for (const i of g.items) items.push({ lane: i.you ? 'YOU' : g.lane, bucket: i.bucket, done: i.done, text: `${i.text} #${i.issue}`, outcome: i.outcome, milestone: i.gate });
+  }
+} else {
+  let board;
+  try { board = fs.readFileSync(boardPath, 'utf8'); }
+  catch (e) { console.error('board-html: cannot read ' + boardPath); process.exit(1); }
+  lines = board.split(/\r?\n/);
+  const routeAt = lines.findIndex(l => /^##\s*ROUTE\b/i.test(l));
+  if (routeAt >= 0) {
+    for (let i = routeAt + 1; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (/^##\s/.test(l)) break;
+      if (!l) continue;
+      const bm = l.match(/^buckets:\s*(.+)$/i);
+      if (bm) { buckets = bm[1].split('·').map(s => s.trim()).filter(Boolean); continue; }
+      const parts = l.split('|').map(s => s.trim());
+      if (parts.length < 3 || !/^(C\d+|G\d+|YOU)$/i.test(parts[0])) { malformed++; continue; }
+      const extra = parts[3] || '';
+      items.push({ lane: parts[0].toUpperCase(), bucket: parts[1], done: parts[2].startsWith('✓'), text: parts[2].replace(/^✓\s*/, ''),
+        outcome: (extra.match(/^->\s*(.+)$/) || [])[1] || null, milestone: (extra.match(/^(?:milestone|gate):\s*(.+)$/i) || [])[1] || null });
+    }
+  }
+  for (const l of lines) {
+    const m = l.match(/^\|\s*([CG]\d+)\s*·\s*([^|]+?)\s*\|(.*)\|?$/);
+    if (m) { laneNames[m[1]] = m[2].trim(); laneStatus[m[1]] = (m[3].split('|')[0] || '').trim(); }
+  }
 }
 // GATES section: lines after "## GATES" until next heading.
 const gatesAt = lines.findIndex(l => /^##\s*GATES\b/i.test(l));
