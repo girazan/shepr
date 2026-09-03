@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+// board-gh — GitHub Issues + Projects v2 ARE the orch board (spec §4).
+// Milestone (operator's) → goal = Issue orch:goal → items = sub-issues.
+// Verbs: init · milestones · add-goal · add-item · move · set-status ·
+// set-blocker · clear-blocker · done · close-goal · read.
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { makeGh } = require('./lib/gh');
+const { foldStatus } = require('./lib/fold');
+const { openJournal } = require('./lib/journal');
+const { withLock } = require('./lib/lockfile');
+
+const MARK = '<!-- orch-item -->';
+const STATUS_OPTS = ['Todo', 'In progress', 'In review', 'Done'];
+
+function parseArgs(argv) {
+  const pos = [], opt = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) { const k = a.slice(2); if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) opt[k] = argv[++i]; else opt[k] = true; }
+    else pos.push(a);
+  }
+  return { pos, opt };
+}
+
+function loadCfg(cwd) {
+  const p = path.join(cwd, '.orch', 'board.json');
+  if (!fs.existsSync(p)) return null;
+  const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+  for (const k of ['owner', 'repo', 'projectId', 'fieldIds', 'optionIds']) if (c[k] == null) return null;
+  if (!c.fieldIds.status || !c.fieldIds.priority || !c.optionIds.priority || !Object.keys(c.optionIds.priority).length) return null;
+  c.buckets = Object.keys(c.optionIds.priority); // Priority options ARE the buckets, in field order
+  return c;
+}
+
+function parseBody(body) {
+  const lines = (body || '').split(/\r?\n/).filter(l => l.trim() !== MARK);
+  const grab = re => { const m = lines.map(l => l.match(re)).find(Boolean); return m ? m[1].trim() : null; };
+  return { text: (lines[0] || '').trim(), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i) };
+}
+function bodyOf(text, { outcome, gate } = {}) {
+  return [text, '', outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null, MARK].filter(x => x !== null).join('\n');
+}
+
+const PI = `projectItems(first:10){ nodes{ project{ id } fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldSingleSelectValue { name field{ ... on ProjectV2FieldCommon { name } } } } } } }`;
+const READ_QUERY = `query($owner:String!,$repo:String!){ repository(owner:$owner,name:$repo){
+  issues(first:100,states:[OPEN,CLOSED],labels:["orch:goal"],orderBy:{field:CREATED_AT,direction:ASC}){ nodes{
+    number title body state updatedAt milestone{ number title } labels(first:30){ nodes{ name } } ${PI}
+    subIssues(first:50){ nodes{ number title body state updatedAt labels(first:30){ nodes{ name } } assignees(first:5){ nodes{ login } } ${PI} } } } } } }`;
+
+function fieldOf(node, cfg, name) {
+  const pi = node.projectItems.nodes.find(p => p.project.id === cfg.projectId);
+  const v = pi && pi.fieldValues.nodes.find(x => x.field && x.field.name === name);
+  return v ? v.name : null;
+}
+function latestComment(gh, cfg, number, prefix) {
+  const cs = gh.rest('GET', `repos/${cfg.owner}/${cfg.repo}/issues/${number}/comments?per_page=100`) || [];
+  for (let i = cs.length - 1; i >= 0; i--) { const first = (cs[i].body || '').split(/\r?\n/)[0].trim(); if (first.startsWith(prefix)) return first; }
+  return null;
+}
+
+function readBoard(gh, cfg) {
+  const d = gh.graphql(READ_QUERY, { owner: cfg.owner, repo: cfg.repo });
+  const goals = d.repository.issues.nodes.map(g => {
+    const items = g.subIssues.nodes.map(i => {
+      const labels = i.labels.nodes.map(l => l.name);
+      const b = parseBody(i.body);
+      const status = fieldOf(i, cfg, 'Status');
+      return { issue: i.number, labels, status, pipeline: fieldOf(i, cfg, 'Pipeline'), feature: fieldOf(i, cfg, 'Feature'),
+        bucket: fieldOf(i, cfg, 'Priority') || cfg.buckets[0],
+        text: b.text || i.title, outcome: b.outcome, gate: b.gate,
+        done: i.state === 'CLOSED' || status === 'Done', you: labels.includes('orch:you'), updated: i.updatedAt };
+    });
+    const forFold = items.map(i => ({ labels: i.labels, status: i.status,
+      blockerComment: i.labels.includes('orch:blocked') ? latestComment(gh, cfg, i.issue, 'blocked:') : null }));
+    const { status, blocker } = foldStatus({ state: g.state.toLowerCase(), labels: g.labels.nodes.map(l => l.name) }, forFold);
+    return { lane: `G${g.number}`, issue: g.number, name: g.title, milestone: g.milestone ? { number: g.milestone.number, title: g.milestone.title } : null,
+      status, blocker, brief: g.body || '', updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
+  }).sort((a, b) => ((a.milestone ? a.milestone.number : Infinity) - (b.milestone ? b.milestone.number : Infinity)) || (a.issue - b.issue));
+  return { goals, buckets: cfg.buckets };
+}
+
+function listMilestones(gh, cfg) {
+  const ms = gh.rest('GET', `repos/${cfg.owner}/${cfg.repo}/milestones?state=open&per_page=100`) || [];
+  const rank = t => { const m = /^C(\d+)\b/.exec(t); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; };
+  return ms.map(m => ({ number: m.number, title: m.title, open: m.open_issues, closed: m.closed_issues, r: rank(m.title) }))
+    .sort((a, b) => a.r - b.r || a.number - b.number).map(({ r, ...m }) => m);
+}
+
+function main(argv, deps = {}) {
+  const cwd = deps.cwd || process.cwd();
+  const stdout = deps.stdout || (s => process.stdout.write(s));
+  const gh = deps.gh || makeGh();
+  const { pos, opt } = parseArgs(argv);
+  const verb = pos[0];
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-goal|add-item|move|set-status|set-blocker|clear-blocker|done|close-goal|read> …\n'); return 1; }
+  if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
+  const cfg = loadCfg(cwd);
+  if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
+  if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
+  if (verb === 'read') {
+    const cacheKey = `__board_${cfg.owner}_${cfg.repo}`;
+    if (!gh[cacheKey]) gh[cacheKey] = readBoard(gh, cfg);
+    let b = gh[cacheKey];
+    if (opt.goal) b = { goals: b.goals.filter(g => g.lane === String(opt.goal).toUpperCase()), buckets: b.buckets };
+    stdout(JSON.stringify(b, null, opt.json ? 0 : 2) + '\n');
+    return 0;
+  }
+  const commonDir = deps.commonDir || require('../hooks/lib/config').resolveRepoKey(cwd);
+  if (!commonDir) { stdout('board-gh: not inside a git repository.\n'); return 1; }
+  return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg,
+    readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto });
+}
+
+module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, loadCfg, MARK, STATUS_OPTS };
+if (require.main === module) process.exit(main(process.argv.slice(2)));
