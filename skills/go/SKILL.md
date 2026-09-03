@@ -1,11 +1,11 @@
 ---
 name: go
 description: >
-  The orch session driver. Use for any work session after a campaign exists:
+  The orch session driver. Use for any work session after a goal exists:
   reads the board, worklogs, contract, and unratified ADRs, decides the
   current phase (route/work/ship/loop) by ordered precedence, acts, and
   reports. The human decides only what the contract reserves for them.
-  Do NOT use to shape a new campaign (/orch:goal), edit the contract or
+  Do NOT use to shape a new goal (/orch:goal), edit the contract or
   ratify ADRs (/orch:setup), or just view progress (/orch:board).
 ---
 
@@ -18,25 +18,23 @@ judgment, verdict-only; suited cheap models execute.
 
 ## On every invocation
 
-1. Read: `docs/BOARD.md` · the active campaign's worklog · `docs/adr/` for
-   `Status: proposed` · the contract. Legacy boards: if rows lack `C<n>`
-   numbers, assign them now (max + 1, row order) and say so — the one
-   write `/orch:board` also shares.
-2. Focus — exactly one lane per session when several are open: the
-   operator's named lane (`/orch:go C2`) wins; else the lane whose
-   worklog was most recently touched; else the first non-blocked lane in
+1. Read: `node "<plugin>/scripts/board-gh.js" read --json` · the active
+   goal's worklog · `docs/adr/` for `Status: proposed` · the contract.
+2. Focus — exactly one goal per session when several are open: the
+   operator's named goal (`/orch:go G142`) wins; else the goal whose
+   worklog was most recently touched; else the first non-blocked goal in
    board order. Never silently switch focus mid-session.
 3. Report ≤5 lines, opening with
-   `focus: C<n> · <name> (+<k> open)` — then phase, blockers (⚠ + age if
+   `focus: G<n> · <name> (+<k> open)` — then phase, blockers (⚠ + age if
    a lane sat in one status past `board.staleDays`, default 3),
    unratified ADRs with ages, parked items.
 4. Decide the phase — ORDERED, first match wins:
 
 | # | Condition | Phase |
 |---|---|---|
-| 1 | board row `merged` | closed → report, stop; a merged campaign never re-enters ship or loop |
+| 1 | goal status `merged` | closed → report, stop; a merged goal never re-enters ship or loop |
 | 2 | operator's message asks for an autonomous run | loop → load `loop.md` |
-| 3 | no campaign / no BRIEF | → point to `/orch:goal`, stop |
+| 3 | no goal / no BRIEF | → point to `/orch:goal`, stop |
 | 4 | BRIEF, no `ROUTE:` line | route (below) |
 | 5 | `ROUTE:` exists, done-condition not evidenced | work → load `work.md` |
 | 6 | ledger satisfies the BRIEF's `done:` | ship (below) |
@@ -46,16 +44,20 @@ steps are visible, never silent.
 
 ## The board
 
-Canonical file: `docs/BOARD.md` — git-tracked. Edit the row and COMMIT it
-whenever a campaign's status or blocker changes: an uncommitted board edit is
-an unrecorded one, and `git log` on the file is the campaign journal.
+Canonical store: GitHub Issues + the repo's Project (`.orch/board.json`,
+spec §4). Milestone (operator's, `C<n> …`) → goal = `orch:goal` issue
+(`G<n>`) → items = sub-issues; the item marked `gate:` closes the
+goal. Goal status is never written — it is folded from the items:
+`merged` (goal closed) · `blocked` (an item has `orch:blocked`) ·
+`needs_attention` (label on the goal) · `review` · `running` ·
+`ready`. Change it by changing items: `set-status <issue#>
+<Todo|In progress|In review|Done>`, `set-blocker <issue#> "<why>"
+--owner <who>`, `clear-blocker`, `done <issue#>`; reschedule with
+`move <issue#> Now|Next|Later` (the Project's `Priority` field — the
+board's columns). Every verb fails the step if GitHub is unreachable —
+say so, never pretend.
 
-Status vocabulary: **ready** (shaped, unowned) · **running** · **review**
-(in the review ladder) · **blocked** (MUST name the blocker AND who owns
-unblocking it) · **needs_attention** (work ended without evidence — see
-phase: ship) · **merged**.
-
-Board-theater rule: a campaign sitting blocked for more than a session with no
+Board-theater rule: a goal sitting blocked for more than a session with no
 named unblock-owner is board theater — surface it, don't recite past it.
 
 Detail lives in worklogs, never the board.
@@ -80,7 +82,7 @@ here; if wording ever differs, this section wins.
   higher). No match, a conflict, or a ship-gate BLOCK naming `unmatched` →
   park + write a proposed ADR with a ready-to-paste amendment, and append
   the parked action to the board's YOU lane
-  (`YOU | NOW | <item> |`) so owner work is visible as a track, not
+  (`add-item G<n> "<action>" --you`) so owner work is visible as a track, not
   scattered in prose. You NEVER edit the contract yourself.
 - INCONCLUSIVE verdicts always go to the operator.
 - The ship-gate hook enforces the ship side deny-by-default: git
@@ -93,7 +95,7 @@ here; if wording ever differs, this section wins.
 
 ## Phase: route
 
-1. Classify the campaign's intended change per the contract rules above.
+1. Classify the goal's intended change per the contract rules above.
 2. Knowledge-gap re-check: if routing surfaces facts you can neither
    derive from the repo nor verify from training (post-cutoff APIs, niche
    domain facts, vendor specifics), run the research route (see
@@ -107,7 +109,7 @@ here; if wording ever differs, this section wins.
    only on approval, with `approved:operator`. `decide: ai` → write it
    with `approved:auto`.
 5. Append to the worklog, exactly:
-   `ROUTE: lane:C<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · approved:<operator|auto> · <date>`
+   `ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · approved:<operator|auto> · <date>`
    Then enter phase work.
 
 Complete when: the ROUTE line is in the worklog with its approval
@@ -118,7 +120,7 @@ recorded.
 1. Merge gate — all three legs, or park for the operator:
    ① No regression — the full relevant suite, from the real runner's
    verdict line, never a filtered/wrapped view. ② Measured improvement on
-   the campaign's metric, exceeding its documented noise band — inside the
+   the goal's metric, exceeding its documented noise band — inside the
    band is INCONCLUSIVE → parks; "flat but correct" and hygiene-only park.
    ③ Root cause, no band-aid — symptom-masking stops for the operator
    regardless of green gates.
@@ -127,15 +129,17 @@ recorded.
    `commit`/`push` → run exactly the granted action; the ship-gate hook
    verifies independently — if it blocks, re-read the contract, never
    retry variants.
-3. Board: evidence-before-done — the row flips to `merged` ONLY with a
-   ledger line or artifact path behind it (else `needs_attention`); commit
-   the board edit with the work. Evidence + baseline SHA in the commit/PR.
-   Mark the lane's completed ROUTE items `✓` and update the `TODAY'S
-   QUEUE` expectations in the same board commit; a `milestone:` item
-   flipping ✓ is what closes the lane.
+3. Board: evidence-before-done — `done <issue#>` for each completed
+   item; append the ledger line to the worklog and COMMIT it; then
+   `close-goal G<n> --evidence "<that ledger line>"`. The script
+   refuses while any item is open or without evidence; the ship-gate
+   hook independently requires the ledger line in the worklog **at
+   HEAD**. The gate item flipping `done` is what makes the goal
+   closable. Work ended without evidence → `set-blocker <gate-item#>
+   "no evidence: <why>" --owner <who>` and leave the goal blocked.
 
-Complete when: the board row is `merged` (or parked with a named reason)
-and the board commit carries the evidence.
+Complete when: the goal is closed (or parked/blocked with a named reason)
+and the worklog commit carries the evidence.
 
 ## Records & session end
 

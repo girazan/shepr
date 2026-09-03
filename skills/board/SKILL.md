@@ -2,7 +2,7 @@
 name: board
 description: >
   Render the orch route board: a read-only, forward-looking map of every
-  campaign lane (buckets × tracks, the YOU owner lane, gates, today's
+  goal lane (buckets × tracks, the YOU owner lane, gates, today's
   queue). Use when the operator wants to see progress, the path to done,
   stale lanes, or pending ADRs — without starting any work. Do NOT use
   to start, route, or ship anything — /orch:go acts; this only looks.
@@ -10,20 +10,21 @@ description: >
 
 # /orch:board — three commands act, this one looks
 
-READ-ONLY. Never route, never delegate, never edit a file — with ONE
-exception, announced when it happens: assigning `C<n>` numbers to legacy
-unnumbered board rows (max existing + 1, in row order; worklogs are
-renamed only when next written to).
+READ-ONLY. Never route, never delegate, never edit a file.
 
 ## Gather (all best-effort — render what exists, label what doesn't)
 
-1. `docs/BOARD.md`: the lane table and the `## ROUTE` section
-   (`buckets:` line; items `LANE | BUCKET | TEXT |` with optional
-   `-> outcome` or `milestone: label`; leading `✓` = done).
-2. Stale: `git log --format=%ci -- docs/BOARD.md` vs each lane's last
-   status change (the commit whose diff touched its row). Same status
-   past `board.staleDays` (`.claude/orch.json`, default 3) → ⚠ with age.
-3. Metric per lane: last ledger line of `tmp/worklogs/C<n>-*.md`
+1. Board: `node "<plugin>/scripts/board-gh.js" read --json` — GitHub Issues
+   + the repo's Project ARE the board (spec §4): `goals[]` (lane `G<n>`,
+   `name`, `milestone`, folded `status`, `blocker`, `items[]` incl. YOU
+   items flagged `you`, the gate item carrying `gate`). No
+   `.orch/board.json` → say "board not initialised — run
+   `/orch:board init`" and stop. GitHub unreachable → say so and stop;
+   never render from memory.
+2. Stale: an item's `updated` older than `board.staleDays`
+   (`.claude/orch.json`, default 3) while its goal's status is unchanged
+   → ⚠ with age.
+3. Metric per lane: last ledger line of `tmp/worklogs/G<n>-*.md`
    (`before → after`) plus the BRIEF `metric:` target.
 4. Gate digest per lane: `.claude/orch-audit.jsonl` entries whose files
    match the lane's contract domains, since the operator's last board
@@ -34,16 +35,18 @@ renamed only when next written to).
 
 ## Render (ASCII, in chat)
 
-Layout, exactly this shape — buckets as columns, lanes as tracks, YOU
-last and visually distinct, gates + ADRs + queue as the footer:
+Layout, exactly this shape — buckets as columns, goal tracks grouped
+under a one-line milestone header, YOU last and visually distinct, gates
++ ADRs + queue as the footer:
 
-    ORCH BOARD · <repo> · <goal line from the board header>
+    ORCH BOARD · <repo> · project #<n>
     ═══════════════════════════════════════════════════════
      NOW →            <bucket 2>         <bucket 3>
     ───────────────────────────────────────────────────────
-    C1 · <name>   <status> <⚠ stale Nd>   <metric> · <digest>
+    ── C1 SHU-HDS operable ──
+    G142 · <name>   <status> <⚠ stale Nd>   <metric> · <digest>
      ├─▶ <item>       ├─▶ <item> ──▶ <outcome>
-     │                │   = <MILESTONE> ✅
+     │                │   = <LABEL> ✅
     YOU · owner lane — nothing here is delegable
      ├─▶ <item>       ├─▶ <item>
     ───────────────────────────────────────────────────────
@@ -52,21 +55,27 @@ last and visually distinct, gates + ADRs + queue as the footer:
      TODAY'S QUEUE: <current session order, from NOW items + parks>
 
 Done items keep their place with ✓ — the map read left-to-right IS the
-history. Buckets are the operator's labels; never invent dates.
+history. Buckets are the Project's `Priority` options — never invent one.
 
 ## `/orch:board html`
 
-Compute stale + digest as above, then run:
+Run `read --json > tmp/board.json`, compute stale + digest as above, then:
 
-    node "<plugin>/scripts/board-html.js" docs/BOARD.md tmp/board.html \
+    node "<plugin>/scripts/board-html.js" --json tmp/board.json tmp/board.html \
       --worklogs tmp/worklogs --adr docs/adr \
-      --stale "C2:5d" --digest "C1:4 ships · 1 block" \
+      --stale "G142:5d" --digest "G142:4 ships · 1 block" \
       --queue "<queue>" --title "orch board · <repo>"
 
 Report the output path; do not open it unasked.
 
-## No route section?
+## `/orch:board init` — the one write this command owns
 
-Render the lane table alone, then say what's missing: "no `## ROUTE`
-section — `/orch:goal` seeds one per lane, or add `buckets:` + item
-lines by hand." Never scaffold it yourself — this command only looks.
+Announce it, run `node "<plugin>/scripts/board-gh.js" init [--project N] --dry-run`,
+show the DRY lines, and on the operator's go run it without `--dry-run`.
+`--project N` adopts an existing Project (i-Start: `--project 1`,
+Pertasim); otherwise a `<repo> · orch board` Project is created.
+Idempotent; never creates milestones; never renames `Priority` options
+— tell the operator to rename `P0/P1/P2 → Now/Next/Later` in the
+Project settings first if they want those names. Commit
+`.orch/board.json`. Option: `--owner <login>` (Project owner if not the
+repo owner).

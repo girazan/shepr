@@ -4,7 +4,7 @@ description: >
   Onboard a repo onto the orch contract, edit contract domains, mirror the
   contract into the lock file, configure workflow tools, and ratify or
   reject proposed ADRs. The only place the contract changes.
-  Do NOT use for day-to-day work (/orch:go), creating campaigns
+  Do NOT use for day-to-day work (/orch:go), creating goals
   (/orch:goal), or viewing the board (/orch:board).
 ---
 
@@ -93,6 +93,15 @@ Only on operator request. Preview first, then apply:
    `version`, record the change as an accepted ADR, update the lock copy
    if mirrored (operator applies it — their file). In-flight lanes are
    re-routed (one route phase each) as part of this checklist.
+
+## Migrating to v0.10 (board on GitHub)
+
+- **v0.10 board on GitHub:** run `/orch:board init` (dry-run first;
+  `--project N` to adopt an existing Project); commit `.orch/board.json`;
+  if the lock has a `repos[<key>]` entry, write `board: { github: true }`
+  into it (same atomic-replace path as contract); delete `docs/BOARD.md`
+  if present — no import, the file is retired (spec §4, Non-goals).
+  Existing worklogs named `C<n>-…` are left alone; new goals are `G<n>-…`.
 
 ## Ratifying ADRs
 
