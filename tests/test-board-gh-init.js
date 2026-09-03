@@ -24,7 +24,7 @@ function fakeGh(state) {
       if (/repositoryOwner/.test(q)) return { repositoryOwner: { id: 'OWN', __typename: 'Organization', projectsV2: { nodes: state.projects } } };
       if (/createProjectV2\(/.test(q)) { const p = { id: 'PVT_new', number: 9, title: v.t }; state.projects.push(p); return { createProjectV2: { projectV2: p } }; }
       if (/fields\(first/.test(q)) return { node: { fields: { nodes: state.fields } } };
-      if (/updateProjectV2Field/.test(q)) { const f = state.fields.find(x => x.id === v.f); f.options = v.opts.map((o, i) => ({ id: f.id + i, name: o.name })); return { updateProjectV2Field: { projectV2Field: f } }; }
+      if (/updateProjectV2Field/.test(q)) { const f = state.fields.find(x => x.id === v.f); f.options = v.opts.map((o, i) => ({ id: f.id + i, name: o.name, color: o.color, description: o.description })); return { updateProjectV2Field: { projectV2Field: f } }; }
       if (/createProjectV2Field/.test(q)) { const f = { id: 'F_' + v.name, name: v.name, options: v.opts.map((o, i) => ({ id: v.name.toLowerCase() + i, name: o.name })) }; state.fields.push(f); return { createProjectV2Field: { projectV2Field: f } }; }
       throw new Error('unhandled ' + q.slice(0, 50));
     },
@@ -43,7 +43,7 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
 
 // Fresh repo, nothing exists → create project, Priority, Pipeline, labels.
 {
-  const st = { projects: [], fields: [{ id: 'F_S', name: 'Status', options: [{ id: 'a', name: 'Todo' }, { id: 'b', name: 'In Progress' }, { id: 'c', name: 'Done' }] }], labels: [] };
+  const st = { projects: [], fields: [{ id: 'F_S', name: 'Status', options: [{ id: 'a', name: 'Todo', color: 'GREEN', description: 'd' }, { id: 'b', name: 'In Progress' }, { id: 'c', name: 'Done' }] }], labels: [] };
   const gh = fakeGh(st);
   const r = run(['init'], gh);
   check('init exits 0', r.code === 0);
@@ -55,6 +55,7 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   check('optionIds recorded: canonical status names, priority, pipeline; feature null', cfg.optionIds.status['In review'] === 'F_S3' && cfg.optionIds.status['In progress'] === 'F_S1' && cfg.optionIds.priority.Now && cfg.optionIds.pipeline.numerics && cfg.fieldIds.feature === null);
   check('orch labels created (five, no bucket labels)', ALL_LABELS.every(l => st.labels.includes(l)) && !st.labels.some(l => l.startsWith('orch:bucket')));
   check('no milestone call ever', !gh.calls.some(c => /milestones/.test(c.p || '')));
+  check('existing Status option colors preserved when adding In review', st.fields[0].options.find(o => o.name === 'Todo').color === 'GREEN' && st.fields[0].options.find(o => o.name === 'Todo').description === 'd');
 }
 // Adopt Pertasim-shaped project: everything present, P0/P1/P2 renamed by the operator already.
 {
@@ -96,6 +97,18 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   const r = run(['init', '--dry-run'], gh);
   check('dry-run prints DRY lines', /DRY create project/.test(r.out) && /DRY create Priority/.test(r.out));
   check('dry-run writes no config and no mutations', !fs.existsSync(CFGP) && noMut(gh));
+}
+// Empty Priority field → error even on dry-run.
+{
+  fs.rmSync(CFGP, { force: true });
+  const st = { projects: [{ id: 'PVT_bad', number: 2, title: 'BadProject' }],
+    fields: [{ id: 'F_S', name: 'Status', options: [{ id: 's0', name: 'Todo' }, { id: 's1', name: 'In progress' }, { id: 's2', name: 'In review' }, { id: 's3', name: 'Done' }] },
+      { id: 'F_R', name: 'Priority', options: [] }],
+    labels: ALL_LABELS.slice() };
+  const gh = fakeGh(st);
+  const r = run(['init', '--project', '2', '--dry-run'], gh);
+  check('dry-run detects empty Priority field', r.code === 1 && /no options/.test(r.out));
+  check('dry-run with empty Priority writes no config', !fs.existsSync(CFGP));
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

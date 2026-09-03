@@ -16,9 +16,9 @@ const optInput = names => names.map(name => ({ name, color: 'GRAY', description:
 const Q = {
   owner: 'query($o:String!){ repositoryOwner(login:$o){ id __typename ... on ProjectV2Owner { projectsV2(first:100){ nodes{ id number title } } } } }',
   createProject: 'mutation($o:ID!,$t:String!){ createProjectV2(input:{ownerId:$o,title:$t}){ projectV2{ id number } } }',
-  fields: 'query($p:ID!){ node(id:$p){ ... on ProjectV2 { fields(first:50){ nodes{ ... on ProjectV2FieldCommon { id name } ... on ProjectV2SingleSelectField { id name options{ id name } } } } } } }',
-  updateField: 'mutation($f:ID!,$opts:[ProjectV2SingleSelectFieldOptionInput!]!){ updateProjectV2Field(input:{fieldId:$f,singleSelectOptions:$opts}){ projectV2Field{ ... on ProjectV2SingleSelectField { id options{ id name } } } } }',
-  createSelect: 'mutation($p:ID!,$name:String!,$opts:[ProjectV2SingleSelectFieldOptionInput!]!){ createProjectV2Field(input:{projectId:$p,dataType:SINGLE_SELECT,name:$name,singleSelectOptions:$opts}){ projectV2Field{ ... on ProjectV2SingleSelectField { id name options{ id name } } } } }',
+  fields: 'query($p:ID!){ node(id:$p){ ... on ProjectV2 { fields(first:50){ nodes{ ... on ProjectV2FieldCommon { id name } ... on ProjectV2SingleSelectField { id name options{ id name color description } } } } } } }',
+  updateField: 'mutation($f:ID!,$opts:[ProjectV2SingleSelectFieldOptionInput!]!){ updateProjectV2Field(input:{fieldId:$f,singleSelectOptions:$opts}){ projectV2Field{ ... on ProjectV2SingleSelectField { id options{ id name color description } } } } }',
+  createSelect: 'mutation($p:ID!,$name:String!,$opts:[ProjectV2SingleSelectFieldOptionInput!]!){ createProjectV2Field(input:{projectId:$p,dataType:SINGLE_SELECT,name:$name,singleSelectOptions:$opts}){ projectV2Field{ ... on ProjectV2SingleSelectField { id name options{ id name color description } } } } }',
 };
 
 function remoteRepo(cwd) {
@@ -37,7 +37,9 @@ function ensureOptions(gh, field, wanted, say, dry, label) {
   if (!missing.length) return field;
   say(`DRY add ${label} options: ${missing.join(', ')}`);
   if (dry) return field;
-  return gh.graphql(Q.updateField, { f: field.id, opts: optInput([...field.options.map(x => x.name), ...missing]) }).updateProjectV2Field.projectV2Field;
+  const preserved = field.options.map(x => ({ name: x.name, color: x.color || 'GRAY', description: x.description || '' }));
+  const newOpts = optInput(missing);
+  return gh.graphql(Q.updateField, { f: field.id, opts: [...preserved, ...newOpts] }).updateProjectV2Field.projectV2Field;
 }
 function createSelect(gh, project, name, opts, say, dry) {
   say(`DRY create ${name} field: ${opts.join(', ')}`);
@@ -69,8 +71,9 @@ function init({ opt, cwd, gh, stdout }) {
   const status = ensureOptions(gh, byName('Status') || { id: 'DRY', options: [] }, STATUS_OPTS, say, dry, 'Status');
   // Priority IS the bucket axis. Present → read verbatim (operator renames
   // P0/P1/P2 → Now/Next/Later in the UI). Absent → create Now/Next/Later.
-  const priority = byName('Priority') || createSelect(gh, project, 'Priority', DEFAULT_BUCKETS, say, dry);
-  if (!dry && !priority.options.length) { say('init: Priority field has no options — add at least one in the Project settings.'); return 1; }
+  const existingPriority = byName('Priority');
+  const priority = existingPriority || createSelect(gh, project, 'Priority', DEFAULT_BUCKETS, say, dry);
+  if (existingPriority && !existingPriority.options.length) { say('init: Priority field has no options — add at least one in the Project settings.'); return 1; }
   const doms = domains(cwd);
   const pipeline = byName('Pipeline') || createSelect(gh, project, 'Pipeline', doms.length ? doms : ['general'], say, dry);
   const feature = byName('Feature') || null;
