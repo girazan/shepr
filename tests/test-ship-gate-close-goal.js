@@ -41,5 +41,19 @@ check('read verb untouched', run('node scripts/board-gh.js read --json') === 0);
 check('boundary: G14 does not match G142-*.md file', run(CMD.replace(/G142/g, 'G14')) === 2);
 const audit = fs.readFileSync(path.join(PROJ, '.claude', 'orch-audit.jsonl'), 'utf8');
 check('ALLOW audited with lane', /"action":"close-goal".*"lane":"G142".*"verdict":"ALLOW"/.test(audit));
+
+// evidence text-fallback removed: a word from --evidence appearing anywhere
+// in the worklog is not enough — only a ledger line naming the goal passes.
+fs.writeFileSync(path.join(PROJ, 'tmp', 'worklogs', 'G8-kg.md'), 'BRIEF\ngoal: x\n');
+g(['add', '-f', 'tmp/worklogs/G8-kg.md']); g(['commit', '-qm', 'wl8']);
+check('evidence word present but no ledger line → BLOCK', run('node scripts/board-gh.js close-goal G8 --evidence BRIEF') === 2);
+
+// close-goal no longer short-circuits: chained with a gated git verb, the
+// close-goal pre-check ALLOWs its own part but control must continue into
+// classify() so the chained verb is still gated.
+check('close-goal ALLOW chained with git push → still gated (unresolvable base)',
+  run(`${CMD} && git push origin main`) === 2);
+check('git merge chained with close-goal ALLOW → still gated (denied verb)',
+  run(`git merge x && ${CMD}`) === 2);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

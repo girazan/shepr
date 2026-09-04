@@ -160,12 +160,9 @@ if (CG) {
     let text = '';
     try { text = git(root0, ['show', `HEAD:${wl}`]); }
     catch { block(`close-goal: cannot read ${wl} at HEAD`); }
-    const ev = cmd.match(/--evidence\s+(?:"([^"]+)"|'([^']+)'|(\S+))/) || [];
-    const evidence = ev[1] || ev[2] || ev[3] || '';
-    if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text) && !(evidence && text.includes(evidence))) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
+    if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text)) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
     appendAudit(root0, { action: 'close-goal', lane, verdict: 'ALLOW', by: 'hook' });
   }
-  process.exit(0);
 }
 
 const cls = cmd ? classify(cmd) : { action: 0, denied: null, retarget: false };
