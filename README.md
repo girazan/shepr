@@ -64,7 +64,7 @@ One file, `.claude/orch.json`, at your repo root:
 | 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, ratifies ADRs |
 | 🎯 `/orch:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
 | 🚦 `/orch:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says |
-| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init adopts an existing Project (`/orch:board init [--project N]`), renames its `Priority` buckets (`Now/Next/Later`), fsyncs journal. Read-only after init; requires GitHub (no offline fallback). `html` for a shareable page. |
+| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/orch:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Renames Priority to `Now/Next/Later`, fsyncs journal. Read-only after; requires GitHub. `html` for shareable page. |
 
 There is no bare `/orch` — always one of these four. [Architecture diagram →](docs/orch-architecture.html)
 
