@@ -83,6 +83,23 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   run(['init', '--project', '1'], gh);
   check('un-renamed Priority is used verbatim, never renamed', Object.keys(JSON.parse(fs.readFileSync(CFGP, 'utf8')).optionIds.priority).join() === 'P0,P1,P2' && noMut(gh));
 }
+// Adopt with Status missing a canonical option → hard stop, no mutation.
+{
+  fs.rmSync(CFGP, { force: true });
+  const st = { projects: [{ id: 'PVT_pert', number: 1, title: 'Pertasim' }],
+    fields: [{ id: 'F_S', name: 'Status', options: [{ id: 's0', name: 'Todo' }, { id: 's1', name: 'In progress' }, { id: 's2', name: 'Done' }] },
+      { id: 'F_R', name: 'Priority', options: [{ id: 'r0', name: 'Now' }, { id: 'r1', name: 'Next' }, { id: 'r2', name: 'Later' }] }],
+    labels: ALL_LABELS.slice() };
+  const gh = fakeGh(st);
+  const r = run(['init', '--project', '1'], gh);
+  check('adopt with Status missing In review → exit 1', r.code === 1);
+  check('message names the project and missing option', /Status field on project #1 is missing option\(s\): In review/.test(r.out));
+  check('no mutation on missing-option stop', noMut(gh));
+  check('no config written', !fs.existsSync(CFGP));
+  // same, but --dry-run — still a hard stop, not a silent add.
+  const r2 = run(['init', '--project', '1', '--dry-run'], fakeGh(st));
+  check('adopt dry-run with Status missing option → exit 1 too', r2.code === 1 && /missing option\(s\): In review/.test(r2.out));
+}
 // --project that doesn't exist → refuse.
 {
   const st = { projects: [], fields: [], labels: [] };

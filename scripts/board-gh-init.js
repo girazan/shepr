@@ -68,7 +68,23 @@ function init({ opt, cwd, gh, stdout }) {
   const fields = project.id === 'DRY' ? [] : gh.graphql(Q.fields, { p: project.id }).node.fields.nodes;
   const byName = n => fields.find(f => f.name === n);
 
-  const status = ensureOptions(gh, byName('Status') || { id: 'DRY', options: [] }, STATUS_OPTS, say, dry, 'Status');
+  const adopted = opt.project !== undefined;
+  const statusField = byName('Status');
+  let status;
+  if (adopted) {
+    // Adopted project: never rewrite an existing field's options — the
+    // operator owns that field already. Missing canonical options is a
+    // hard stop (dry-run included), not a silent add.
+    const have = (statusField ? statusField.options : []).map(o => o.name.toLowerCase());
+    const missing = STATUS_OPTS.filter(s => !have.includes(s.toLowerCase()));
+    if (missing.length) {
+      say(`init: Status field on project #${project.number} is missing option(s): ${missing.join(', ')} — add them in the Project settings, then re-run`);
+      return 1;
+    }
+    status = statusField;
+  } else {
+    status = ensureOptions(gh, statusField || { id: 'DRY', options: [] }, STATUS_OPTS, say, dry, 'Status');
+  }
   // Priority IS the bucket axis. Present → read verbatim (operator renames
   // P0/P1/P2 → Now/Next/Later in the UI). Absent → create Now/Next/Later.
   const existingPriority = byName('Priority');
