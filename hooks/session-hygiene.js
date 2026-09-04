@@ -5,7 +5,7 @@
 //
 // .claude/orch.json:
 //   { "sessionHygiene": {
-//       "trailPaths": ["tmp/worklogs", "tmp/HANDOFF.md", "docs/BOARD.md"],
+//       "trailPaths": ["tmp/worklogs", "tmp/HANDOFF.md"],
 //       "minEdits": 8
 //   } }
 // Relative trailPaths resolve against the hook payload cwd (project root).

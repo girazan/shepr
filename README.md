@@ -112,7 +112,7 @@ never silently disable a guard.
   "protectedDirs": ["acceptance"],
   "board": { "staleDays": 3 },
   "readBeforeWrite": { "pathRegex": "(Solver|Kernel)", "facts": ["Every caller (grep, not memory).", "The red test.", "The reproduced number.", "Units."] },
-  "sessionHygiene": { "trailPaths": ["tmp/worklogs", "docs/BOARD.md"], "minEdits": 8 },
+  "sessionHygiene": { "trailPaths": ["tmp/worklogs"], "minEdits": 8 },
   "contextMonitor": { "window": 200000, "preAlarm": 0.40, "trip": 0.25 },
   "fleetContext": { "listCmd": "herdr agent list --json", "readCmd": "herdr agent read {name} --source visible", "pattern": "ctx:([0-9]+)%", "threshold": 40 },
   "runOnCommit": { "command": "graphify", "args": ["update", "."] },

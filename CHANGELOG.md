@@ -7,8 +7,10 @@
 - `.orch/board.json` per repo; `board.github` lock key.
 - ship-gate: `close-goal G<n>` requires a ledger line naming `G<n>` in `tmp/worklogs/G<n>-*.md` at HEAD.
 - `board-html.js --json`.
+
 ### Changed
 - Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
+
 ### Removed
 - `docs/BOARD.md` as a board store. `/orch:setup` deletes it; nothing is imported.
 
