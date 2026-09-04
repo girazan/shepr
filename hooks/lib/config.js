@@ -103,7 +103,7 @@ function loadConfig(j) {
     out.contract = repoEntry.contract;
     out.models = repoEntry.models;
   }
-  if (repoEntry && Object.prototype.hasOwnProperty.call(repoEntry, 'board')) out.board = repoEntry.board;
+  if (repoEntry) out.board = repoEntry.board;
   Object.defineProperty(out, '__repoLocked', { value: !!repoEntry });
   if (lockVal.contract !== undefined || lockVal.models !== undefined) {
     console.error('orch: WARNING — top-level contract/models in the lock file is inert; run scripts/migrate-lock.js to move it under repos[<key>].');

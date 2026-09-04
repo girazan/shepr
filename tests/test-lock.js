@@ -60,5 +60,25 @@ check('lock-only extraPatterns active', run('rm -rf /etc', 't6') === 2);
 rmIf(LOCK);
 check('benign command passes with no lock', run('git status', 't7') === 0);
 
+// board must come from the lock ONLY when the repo is locked — a locked
+// repo entry lacking `board` must yield undefined, never the project file's
+// value (a lock without a board opinion is not the same as "no lock").
+rmIf(LOCK);
+const g = a => execFileSync('git', ['-C', PROJ, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
+try { g(['init', '-q']); g(['config', 'user.email', 't@t']); g(['config', 'user.name', 't']); } catch {}
+fs.writeFileSync(PROJCFG, JSON.stringify({ board: { github: true } }));
+try { g(['add', '.']); g(['commit', '-qm', 'init']); } catch {}
+const { loadConfig, resolveRepoKey } = require('../hooks/lib/config');
+process.env.USERPROFILE = FAKEHOME; process.env.HOME = FAKEHOME;
+const repoKey = resolveRepoKey(PROJ);
+fs.writeFileSync(LOCK, JSON.stringify({ repos: { [repoKey]: { contract: { domains: {} } } } }));
+const locked = loadConfig({ cwd: PROJ });
+check('locked repo entry without board → board undefined', locked.board === undefined);
+check('locked repo entry without board → __repoLocked true', locked.__repoLocked === true);
+rmIf(LOCK);
+const unlocked = loadConfig({ cwd: PROJ });
+check('no lock → board falls back to project file', unlocked.board && unlocked.board.github === true);
+rmIf(PROJCFG);
+
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);
