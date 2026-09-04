@@ -221,7 +221,9 @@ writeCfg(CFG);
   check('crash after create: orphan adopted, no duplicate issue', r.code === 0 && Object.values(st.issues).filter(i => i.title === text).length === 1);
   check('crash after create: orphan linked + on project with Status Todo, Priority Now',
     st.parent[141] === 140 && st.items['I_141'] === 'PI_I_141' && st.fields['PI_I_141:F_S'] === 's1' && st.fields['PI_I_141:F_R'] === 'r1');
-  check('crash after create: journal drained, new item wired too', openJournal(JOURNAL).pending().length === 0 && st.parent[Number(r.out.trim())] === 140);
+  const outLines = r.out.trim().split(/\r?\n/);
+  check('crash after create: replay resumed line printed before the verb output', /^board-gh: resumed \d+ pending sub-effect\(s\)/.test(outLines[0]));
+  check('crash after create: journal drained, new item wired too', openJournal(JOURNAL).pending().length === 0 && st.parent[Number(outLines[outLines.length - 1])] === 140);
 }
 // --- lock authority -----------------------------------------------------------------
 {

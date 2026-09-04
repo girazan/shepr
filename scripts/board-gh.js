@@ -35,9 +35,12 @@ function loadCfg(cwd) {
   return c;
 }
 
-function parseBody(body) {
+function stripOpId(body) {
   // The opId marker is identity metadata (spec §4.3), never board content.
-  const lines = (body || '').split(/\r?\n/).filter(l => l.trim() !== MARK && !/^<!-- opId:.* -->$/.test(l.trim()));
+  return (body || '').split(/\r?\n/).filter(l => !/^<!-- opId:.* -->$/.test(l.trim()));
+}
+function parseBody(body) {
+  const lines = stripOpId(body).filter(l => l.trim() !== MARK);
   const grab = re => { const m = lines.map(l => l.match(re)).find(Boolean); return m ? m[1].trim() : null; };
   return { text: (lines[0] || '').trim(), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i) };
 }
@@ -46,8 +49,9 @@ function bodyOf(text, { outcome, gate } = {}) {
 }
 
 const PI = `projectItems(first:10){ nodes{ project{ id } fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldSingleSelectValue { name field{ ... on ProjectV2FieldCommon { name } } } } } } }`;
+// ponytail: first 100 goals / 50 sub-issues per goal; paginate when a repo outgrows it
 const READ_QUERY = `query($owner:String!,$repo:String!){ repository(owner:$owner,name:$repo){
-  issues(first:100,states:[OPEN,CLOSED],labels:["orch:goal"],orderBy:{field:CREATED_AT,direction:ASC}){ nodes{
+  issues(first:100,states:[OPEN,CLOSED],labels:["orch:goal"],orderBy:{field:CREATED_AT,direction:DESC}){ nodes{
     number title body state updatedAt milestone{ number title } labels(first:30){ nodes{ name } } ${PI}
     subIssues(first:50){ nodes{ number title body state updatedAt labels(first:30){ nodes{ name } } assignees(first:5){ nodes{ login } } ${PI} } } } } } }`;
 
@@ -78,7 +82,7 @@ function readBoard(gh, cfg) {
       blockerComment: i.labels.includes('orch:blocked') ? latestComment(gh, cfg, i.issue, 'blocked:') : null }));
     const { status, blocker } = foldStatus({ state: g.state.toLowerCase(), labels: g.labels.nodes.map(l => l.name) }, forFold);
     return { lane: `G${g.number}`, issue: g.number, name: g.title, milestone: g.milestone ? { number: g.milestone.number, title: g.milestone.title } : null,
-      status, blocker, brief: g.body || '', updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
+      status, blocker, brief: stripOpId(g.body).join('\n'), updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
   }).sort((a, b) => ((a.milestone ? a.milestone.number : Infinity) - (b.milestone ? b.milestone.number : Infinity)) || (a.issue - b.issue));
   return { goals, buckets: cfg.buckets };
 }

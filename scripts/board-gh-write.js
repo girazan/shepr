@@ -109,8 +109,11 @@ function write(ctx) {
     return ACTIONS[name](args, makeEffect(actionId, lane, { name, args }));
   }
   function replay() {
+    const pending = journal.pending();
+    const withAction = pending.filter(r => r.action);
+    if (withAction.length) say(`board-gh: resumed ${withAction.length} pending sub-effect(s) from a previous run`);
     const seen = new Set();
-    for (const rec of journal.pending()) {
+    for (const rec of pending) {
       if (!rec.action || seen.has(rec.actionId)) continue;
       seen.add(rec.actionId);
       runAction(rec.action.name, rec.lane, rec.action.args, rec.actionId);
