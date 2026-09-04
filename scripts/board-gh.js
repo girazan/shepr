@@ -48,12 +48,14 @@ function bodyOf(text, { outcome, gate } = {}) {
   return [text, '', outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null, MARK].filter(x => x !== null).join('\n');
 }
 
-const PI = `projectItems(first:10){ nodes{ project{ id } fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldSingleSelectValue { name field{ ... on ProjectV2FieldCommon { name } } } } } } }`;
-// ponytail: first 100 goals / 50 sub-issues per goal; paginate when a repo outgrows it
+// ponytail: page sizes are bounded by GitHub's 500k-node estimate (goals × projectItems × fieldValues × subIssues × …);
+// 50×(3×12 + 40×3×12) ≈ 74k. Raising any first: multiplies the whole product — paginate instead.
+const PI = `projectItems(first:3){ nodes{ project{ id } fieldValues(first:12){ nodes{ ... on ProjectV2ItemFieldSingleSelectValue { name field{ ... on ProjectV2FieldCommon { name } } } } } } }`;
+// ponytail: first 50 goals (newest) / 40 sub-issues per goal; paginate when a repo outgrows it
 const READ_QUERY = `query($owner:String!,$repo:String!){ repository(owner:$owner,name:$repo){
-  issues(first:100,states:[OPEN,CLOSED],labels:["orch:goal"],orderBy:{field:CREATED_AT,direction:DESC}){ nodes{
+  issues(first:50,states:[OPEN,CLOSED],labels:["orch:goal"],orderBy:{field:CREATED_AT,direction:DESC}){ nodes{
     number title body state updatedAt milestone{ number title } labels(first:30){ nodes{ name } } ${PI}
-    subIssues(first:50){ nodes{ number title body state updatedAt labels(first:30){ nodes{ name } } assignees(first:5){ nodes{ login } } ${PI} } } } } } }`;
+    subIssues(first:40){ nodes{ number title body state updatedAt labels(first:20){ nodes{ name } } assignees(first:5){ nodes{ login } } ${PI} } } } } } }`;
 
 function fieldOf(node, cfg, name) {
   const pi = node.projectItems.nodes.find(p => p.project.id === cfg.projectId);
