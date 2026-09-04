@@ -11,6 +11,8 @@ description: >
 
 # /orch:goal — define a goal
 
+Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
+
 The BRIEF is the interface: whatever tool shapes the idea, the output
 lands in this exact format at the top of the goal's worklog
 (`tmp/worklogs/G<n>-<name>.md` — see Register for the number):

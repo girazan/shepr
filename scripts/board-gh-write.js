@@ -181,6 +181,16 @@ function write(ctx) {
       effect('closeIssue', { issue: args.issue });
       return args.issue;
     },
+    attention(args, effect) {
+      if (args.clear) {
+        effect('comment', { issue: args.issue, body: 'attention cleared' });
+        effect('removeLabel', { issue: args.issue, label: 'orch:needs_attention' });
+      } else {
+        effect('addLabel', { issue: args.issue, label: 'orch:needs_attention' });
+        effect('comment', { issue: args.issue, body: `attention: ${args.why}` });
+      }
+      return args.issue;
+    },
   };
 
   const VERBS = {
@@ -229,6 +239,18 @@ function write(ctx) {
       runAction('set-blocker', g.lane, { issue: n, lane: g.lane, text, owner: opt.owner });
     },
     'clear-blocker'() { const n = Number(pos[0]); const { g } = findItem(n); runAction('clear-blocker', g.lane, { issue: n, lane: g.lane }); },
+    attention() {
+      // "--clear" is a bare boolean flag, but parseArgs treats any flag
+      // followed by a non-flag token as consuming it — so `--clear "<what
+      // changed>"` lands the text in opt.clear, not pos[1]. Harmless: the
+      // clear comment is the fixed string "attention cleared", so no text
+      // is required on that path. Only the non-clear form needs "<why>".
+      const gn = laneOf(pos[0]);
+      if (!gn) throw new Error('usage: attention G<n> [--clear] "<why>"');
+      if (!opt.clear && (typeof pos[1] !== 'string' || !pos[1].trim())) throw new Error('usage: attention G<n> "<why>" (required unless --clear)');
+      const g = goal(gn);
+      runAction('attention', g.lane, { issue: gn, lane: g.lane, clear: !!opt.clear, why: pos[1] });
+    },
     done() { const n = Number(pos[0]); const { g } = findItem(n); runAction('done', g.lane, { issue: n, lane: g.lane }); },
     'close-goal'() {
       const gn = laneOf(pos[0]); if (!gn) throw new Error('usage: close-goal G<n> --evidence "<ledger line or artifact path>"');

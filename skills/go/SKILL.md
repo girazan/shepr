@@ -11,6 +11,8 @@ description: >
 
 # /orch:go — the session driver
 
+Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
+
 Premise: the operator decided ONCE (`.claude/orch.json` → `contract`)
 which domains are theirs. Everything else you decide, review, and ship —
 every decision leaves a record. You are the orchestrator: frontier-tier
@@ -52,7 +54,8 @@ goal. Goal status is never written — it is folded from the items:
 `needs_attention` (label on the goal) · `review` · `running` ·
 `ready`. Change it by changing items: `set-status <issue#>
 <Todo|In progress|In review|Done>`, `set-blocker <issue#> "<why>"
---owner <who>`, `clear-blocker`, `done <issue#>`; reschedule with
+--owner <who>`, `clear-blocker`, `attention G<n> [--clear] "<why>"`,
+`done <issue#>`; reschedule with
 `move <issue#> Now|Next|Later` (the Project's `Priority` field — the
 board's columns). Every verb fails the step if GitHub is unreachable —
 say so, never pretend.
@@ -135,8 +138,9 @@ recorded.
    refuses while any item is open or without evidence; the ship-gate
    hook independently requires the ledger line in the worklog **at
    HEAD**. The gate item flipping `done` is what makes the goal
-   closable. Work ended without evidence → `set-blocker <gate-item#>
-   "no evidence: <why>" --owner <who>` and leave the goal blocked.
+   closable. Work ended without evidence → `attention G<n> "no
+   evidence: <why>"` (fold shows `needs_attention`); clear with
+   `attention G<n> --clear "<what changed>"`.
 
 Complete when: the goal is closed (or parked/blocked with a named reason)
 and the worklog commit carries the evidence.
