@@ -15,9 +15,9 @@ function check(name, cond) {
 }
 const CFG = {
   owner: 'o', repo: 'r', projectOwner: 'o', ownerType: 'Organization', projectNumber: 1, projectId: 'PVT_1',
-  fieldIds: { status: 'F_S', priority: 'F_R', pipeline: 'F_P', feature: null },
+  fieldIds: { status: 'F_S', priority: 'F_R', pipeline: 'F_P', feature: 'F_F' },
   optionIds: { status: { Todo: 's1', 'In progress': 's2', 'In review': 's3', Done: 's4' },
-    priority: { Now: 'r1', Next: 'r2', Later: 'r3' }, pipeline: { Engine: 'p1' }, feature: {} },
+    priority: { Now: 'r1', Next: 'r2', Later: 'r3' }, pipeline: { Engine: 'p1' }, feature: { numerics: 'f1', hmi: 'f2' } },
 };
 function writeCfg(c) { fs.writeFileSync(path.join(CWD, '.orch', 'board.json'), JSON.stringify(c)); }
 function fakeGh(handlers) {
@@ -29,12 +29,12 @@ function fakeGh(handlers) {
 }
 function run(argv, gh, extra = {}) {
   let out = '';
-  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, ...extra });
+  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, env: {}, ...extra });
   return { code, out };
 }
-const pi = (status, pipeline, priority) => ({ nodes: [{ project: { id: 'PVT_1' }, fieldValues: { nodes: [
+const pi = (status, pipeline, priority, feature) => ({ nodes: [{ project: { id: 'PVT_1' }, fieldValues: { nodes: [
   status ? { name: status, field: { name: 'Status' } } : null, pipeline ? { name: pipeline, field: { name: 'Pipeline' } } : null,
-  priority ? { name: priority, field: { name: 'Priority' } } : null].filter(Boolean) } }] });
+  priority ? { name: priority, field: { name: 'Priority' } } : null, feature ? { name: feature, field: { name: 'Feature' } } : null].filter(Boolean) } }] });
 
 // --- no config → refuse -------------------------------------------------------
 fs.rmSync(path.join(CWD, '.orch', 'board.json'), { force: true });
@@ -56,14 +56,17 @@ writeCfg(CFG);
 // --- read folds goal status -----------------------------------------------------
 const GOALS = { repository: { issues: { nodes: [
   { number: 142, title: 'knowledge-gate', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'BRIEF\ngoal: x',
-    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo'),
+    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo', null, 'Next', 'hmi'),
     subIssues: { nodes: [
-      { number: 150, title: 'write grammar', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'write grammar\n\noutcome: canonical home\n<!-- orch-item -->',
+      { number: 150, title: 'write grammar', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'write grammar\n\nstep: S1\noutcome: canonical home\naccept: grammar test names the file\nrecipe: tdd\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('In progress', 'Engine', 'Now') },
-      { number: 151, title: 'gate wired', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'gate wired\n\ngate: GATE LIVE\n<!-- orch-item -->',
+      { number: 151, title: 'gate wired', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'gate wired\n\nstep: S2\ngate: GATE LIVE\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('Todo', null, 'Next') },
-      { number: 152, title: 'run /orch:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /orch:setup\n<!-- orch-item -->',
+      { number: 152, title: 'run /orch:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /orch:setup\n\nstep: S3\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }, { name: 'orch:you' }] }, assignees: { nodes: [{ login: 'me' }] }, projectItems: pi('Todo') } ] } },
+  { number: 143, title: 'second goal', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'BRIEF\ngoal: y',
+    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo', null, 'Now'),
+    subIssues: { nodes: [] } },
   { number: 99, title: 'old goal', state: 'CLOSED', updatedAt: '2026-08-01T00:00:00Z', body: 'BRIEF', milestone: null,
     labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Done'), subIssues: { nodes: [] } },
 ] } } };
@@ -72,10 +75,11 @@ const GOALS = { repository: { issues: { nodes: [
   const r = run(['read', '--json'], gh);
   const j = JSON.parse(r.out);
   check('read exits 0', r.code === 0);
-  check('goal G142 in milestone 49 folds running', j.goals[0].lane === 'G142' && j.goals[0].milestone.number === 49 && j.goals[0].status === 'running' && j.goals[0].brief.startsWith('BRIEF'));
-  check('items carry bucket(Priority)/pipeline/outcome/gate/you', j.goals[0].items[0].bucket === 'Now' && j.goals[0].items[0].pipeline === 'Engine' && j.goals[0].items[0].outcome === 'canonical home' && j.goals[0].items[1].bucket === 'Next' && j.goals[0].items[1].gate === 'GATE LIVE' && j.goals[0].items[2].you === true);
-  check('unset Priority → first bucket', j.goals[0].items[2].bucket === 'Now');
-  check('closed goal folds merged, null milestone sorts last', j.goals[1].lane === 'G99' && j.goals[1].status === 'merged' && j.goals[1].milestone === null);
+  const g142 = j.goals.find(g => g.lane === 'G142'), g99 = j.goals.find(g => g.lane === 'G99');
+  check('goal G142 in milestone 49 folds running', g142.milestone.number === 49 && g142.status === 'running' && g142.brief.startsWith('BRIEF'));
+  check('items carry bucket(Priority)/pipeline/outcome/gate/you', g142.items[0].bucket === 'Now' && g142.items[0].pipeline === 'Engine' && g142.items[0].outcome === 'canonical home' && g142.items[1].bucket === 'Next' && g142.items[1].gate === 'GATE LIVE' && g142.items[2].you === true);
+  check('unset Priority → first bucket', g142.items[2].bucket === 'Now');
+  check('closed goal folds merged, null milestone sorts last', g99.status === 'merged' && g99.milestone === null && j.goals[j.goals.length - 1].lane === 'G99');
   check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
   check('--goal filters', JSON.parse(run(['read', '--json', '--goal', 'G99'], gh).out).goals.length === 1);
   check('buckets = Priority options in order', j.buckets.join() === 'Now,Next,Later');
@@ -86,14 +90,15 @@ const GOALS = { repository: { issues: { nodes: [
   const gh = fakeGh([[/subIssues/, () => blocked],
     [/GET repos\/o\/r\/issues\/151\/comments/, () => [{ body: 'blocked: needs setup · owner: you\n<!-- opId:abc -->' }]]]);
   const j = JSON.parse(run(['read', '--json'], gh).out);
-  check('blocked fold pulls blocker text from latest blocked: comment', j.goals[0].status === 'blocked' && j.goals[0].blocker === 'blocked: needs setup · owner: you');
+  const gb = j.goals.find(g => g.lane === 'G142');
+  check('blocked fold pulls blocker text from latest blocked: comment', gb.status === 'blocked' && gb.blocker === 'blocked: needs setup · owner: you');
 }
 // --- write verbs -----------------------------------------------------------------
 const JOURNAL = path.join(COMMON, 'orch', 'board-journal.jsonl');
 const BRIEF = path.join(SCRATCH, 'brief.md');
-fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nkill: 3 sessions\n');
+fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nfeature: numerics\nkill: 3 sessions\n');
 function ghStore() {
-  const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', state: 'open', open_issues: 0, closed_issues: 0 }],
+  const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', description: '', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', description: '', state: 'open', open_issues: 0, closed_issues: 0 }],
     issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null };
   const FIELD = { F_S: ['status', 'Status'], F_R: ['priority', 'Priority'], F_P: ['pipeline', 'Pipeline'], F_F: ['feature', 'Feature'] };
   const optName = (fid, oid) => Object.entries(CFG.optionIds[FIELD[fid][0]]).find(([, id]) => id === oid)[0];
@@ -101,7 +106,9 @@ function ghStore() {
   const node = i => ({ number: i.number, title: i.title, body: i.body, state: i.state.toUpperCase(), updatedAt: 'now', milestone: i.milestone ? st.milestones.find(m => m.number === i.milestone) : null,
     labels: { nodes: i.labels }, assignees: { nodes: (i.assignees || []).map(login => ({ login })) }, projectItems: { nodes: fv(i) } });
   const handlers = [
-    [/GET repos\/o\/r\/milestones/, () => st.milestones],
+    [/GET repos\/o\/r\/milestones\?state=(open|all)/, (b, k) => { const s = k.match(/state=(\w+)/)[1]; const page = Number((k.match(/[?&]page=(\d+)/) || [])[1] || 1); return st.milestones.filter(m => s === 'all' || m.state === s).slice((page - 1) * 100, page * 100); }],
+    [/POST repos\/o\/r\/milestones$/, b => { const m = { number: st.milestones.reduce((x, m) => Math.max(x, m.number), 0) + 1, state: 'open', open_issues: 0, closed_issues: 0, ...b }; st.milestones.push(m); return m; }],
+    [/PATCH repos\/o\/r\/milestones\/(\d+)/, (b, k) => { const m = st.milestones.find(m => m.number === Number(k.match(/milestones\/(\d+)/)[1])); Object.assign(m, b); return m; }],
     [/GET user$/, () => ({ login: 'me' })],
     // identity probe: all orch issues with the given label, newest first
     [/GET repos\/o\/r\/issues\?/, (b, k) => { const l = decodeURIComponent(k.match(/labels=([^&]*)/)[1]);

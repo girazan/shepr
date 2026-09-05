@@ -35,7 +35,7 @@ function fakeGh(state) {
       throw new Error('unhandled ' + m + ' ' + p);
     } };
 }
-function run(argv, gh) { let out = ''; const code = main(argv, { gh, cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; } }); return { code, out }; }
+function run(argv, gh, extra = {}) { let out = ''; const code = main(argv, { gh, cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, env: {}, ...extra }); return { code, out }; }
 const CFGP = path.join(CWD, '.orch', 'board.json');
 const ALL_LABELS = ['orch:goal', 'orch:item', 'orch:you', 'orch:blocked', 'orch:needs_attention'];
 const STATUS4 = () => ['Todo', 'In progress', 'In review', 'Done'].map((nm, i) => ({ id: 's' + i, name: nm }));
