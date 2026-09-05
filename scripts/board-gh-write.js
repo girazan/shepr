@@ -109,6 +109,15 @@ function write(ctx) {
       if (m && m.title === d.title) return d.number;
       gh.rest('PATCH', `${R}/milestones/${d.number}`, { title: d.title }); return d.number;
     },
+    updateFeatureOptions(d) {
+      const { Q, optInput } = require('./board-gh-init');
+      const field = gh.graphql(Q.fields, { p: cfg.projectId }).node.fields.nodes.find(f => f.name === 'Feature');
+      const have = field.options.map(x => x.name.toLowerCase());
+      const missing = d.names.filter(n => !have.includes(n.toLowerCase()));
+      if (!missing.length) return field.id; // already applied (resume) or nothing to add
+      const preserved = field.options.map(x => ({ name: x.name, color: x.color || 'GRAY', description: x.description || '' }));
+      return gh.graphql(Q.updateField, { f: field.id, opts: [...preserved, ...optInput(missing)] }).updateProjectV2Field.projectV2Field.id;
+    },
     closeMilestone(d) {
       const m = pagedMilestones(gh, R, 'all').find(x => x.number === d.number);
       if (!m || m.state === 'closed') return 'closed';
@@ -201,6 +210,7 @@ function write(ctx) {
       effect('retitleMilestone', { number, title: `M${number} · ${args.objective}` }, `M${number}`);
       return number;
     },
+    'sync-features'(args, effect) { effect('updateFeatureOptions', { names: args.missing }, 'board'); return 'synced'; },
     'close-milestone'(args, effect) { effect('closeMilestone', { number: args.number, summary: args.summary, date: args.date }, `M${args.number}`); return args.number; },
     'set-status'(args, effect) {
       effect('setField', { issue: args.issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status[args.status] });
@@ -303,6 +313,22 @@ function write(ctx) {
       if (bare) { runAction('retitle-milestone', 'M?', { number: bare.number, title: `M${bare.number} · ${objective}` }); say(`M${bare.number}`); return 0; }
       const number = runAction('add-milestone', 'M?', { objective, description: `target: ${target} · done: ${done}`, due_on: `${target}T00:00:00Z` });
       say(`M${number}`);
+    },
+    'sync-features'() {
+      const { Q, domains } = require('./board-gh-init');
+      const doms = domains(ctx.cwd || process.cwd());
+      const field = gh.graphql(Q.fields, { p: cfg.projectId }).node.fields.nodes.find(f => f.name === 'Feature');
+      if (!field) { say('sync-features: the Project has no Feature field — create one, then re-run'); return 1; }
+      const have = field.options.map(x => x.name.toLowerCase());
+      const missing = doms.filter(d => !have.includes(d.toLowerCase()));
+      const unmapped = field.options.map(x => x.name).filter(n => !doms.some(d => d.toLowerCase() === n.toLowerCase()));
+      if (missing.length) runAction('sync-features', 'board', { missing });
+      const after = gh.graphql(Q.fields, { p: cfg.projectId }).node.fields.nodes.find(f => f.name === 'Feature');
+      const p = path.join(ctx.cwd || process.cwd(), '.orch', 'board.json');
+      const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+      c.fieldIds.feature = after.id; c.optionIds.feature = Object.fromEntries(after.options.map(x => [x.name, x.id]));
+      fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+      say((missing.length ? `sync-features: added: ${missing.join(', ')}` : 'sync-features: in sync') + (unmapped.length ? ` · unmapped: ${unmapped.join(', ')}` : ''));
     },
     'close-milestone'() {
       const key = pos[0]; const summary = str('summary');
