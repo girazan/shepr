@@ -14,13 +14,21 @@ const fs = require('fs');
 const path = require('path');
 
 function write(ctx) {
-  const { verb, pos, opt, cfg, gh, stdout, commonDir, readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
+  const { verb, pos, opt, cfg, gh, stdout, commonDir, env, readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
+  const { pagedMilestones } = require('./board-gh');
   const say = s => stdout(s + '\n');
   // parseArgs stores a bare `--flag` as true; every value-taking option must reject that.
   const str = name => { const v = opt[name]; if (v === true) throw new Error(`--${name} requires a value`); return typeof v === 'string' ? v : null; };
   const lockCfg = ctx.lockCfg || require('../hooks/lib/config').loadConfig({ cwd: ctx.cwd || process.cwd() });
   if (lockCfg.__repoLocked && !(lockCfg.board && lockCfg.board.github === true)) {
     say('board-gh: this repo is locked and board.github is not enabled in ~/.claude/orch-lock.json — /orch:setup enables it.'); return 1;
+  }
+  // Director-only verbs (spec §10): milestones and goal priority are scope.
+  // ADVISORY — ORCH_ROLE is env, not a credential — but the refusal runs
+  // before replay and before any remote call.
+  const goalMove = verb === 'move' && /^G\d+$/i.test(pos[0] || '');
+  if ((verb === 'add-milestone' || verb === 'close-milestone' || goalMove) && env && env.ORCH_ROLE) {
+    say(`${verb}: refused — ${goalMove ? 'goal priority' : 'milestones'} are the Director's (ORCH_ROLE=${env.ORCH_ROLE})`); return 1;
   }
   const R = `repos/${cfg.owner}/${cfg.repo}`;
   const journal = openJournal(path.join(commonDir, 'orch', 'board-journal.jsonl'));
@@ -90,6 +98,23 @@ function write(ctx) {
     addLabel(d) { gh.rest('POST', `${R}/issues/${d.issue}/labels`, { labels: [d.label] }); return d.label; },
     removeLabel(d) { try { gh.rest('DELETE', `${R}/issues/${d.issue}/labels/${encodeURIComponent(d.label)}`); } catch (e) { if (!/404/.test(e.message)) throw e; } return d.label; },
     closeIssue(d) { if (issueNode(d.issue).state === 'CLOSED') return 'closed'; gh.rest('PATCH', `${R}/issues/${d.issue}`, { state: 'closed' }); return 'closed'; },
+    createMilestone(d) {
+      const all = pagedMilestones(gh, R, 'all');
+      const hit = all.find(m => m.title === d.title || m.title === `M${m.number} · ${d.title}`);
+      if (hit) return hit.number;
+      return gh.rest('POST', `${R}/milestones`, { title: d.title, description: d.description, due_on: d.due_on }).number;
+    },
+    retitleMilestone(d) {
+      const m = pagedMilestones(gh, R, 'all').find(x => x.number === d.number);
+      if (m && m.title === d.title) return d.number;
+      gh.rest('PATCH', `${R}/milestones/${d.number}`, { title: d.title }); return d.number;
+    },
+    closeMilestone(d) {
+      const m = pagedMilestones(gh, R, 'all').find(x => x.number === d.number);
+      if (!m || m.state === 'closed') return 'closed';
+      gh.rest('PATCH', `${R}/milestones/${d.number}`, { state: 'closed', description: `${m.description || ''}\nclosed: ${d.date} · summary: ${d.summary}` });
+      return 'closed';
+    },
   };
   function apply(rec) { const remoteId = FX[rec.subEffect](rec.desired, rec.opId); journal.done(rec.opId, remoteId); return remoteId; }
 
@@ -110,17 +135,21 @@ function write(ctx) {
   function runAction(name, lane, args, actionId = crypto.randomUUID()) {
     return ACTIONS[name](args, makeEffect(actionId, lane, { name, args }));
   }
+  const DIRECTOR_ONLY = a => a && (a.name === 'add-milestone' || a.name === 'retitle-milestone' || a.name === 'close-milestone' || (a.name === 'move' && a.args && a.args.goalMove));
   function replay() {
     const pending = journal.pending();
-    const withAction = pending.filter(r => r.action);
+    const roled = !!(env && env.ORCH_ROLE);
+    const withAction = pending.filter(r => r.action && !(roled && DIRECTOR_ONLY(r.action)));
+    const skipped = new Set(pending.filter(r => r.action && roled && DIRECTOR_ONLY(r.action)).map(r => r.actionId));
     if (withAction.length) say(`board-gh: resumed ${withAction.length} pending sub-effect(s) from a previous run`);
+    if (skipped.size) say(`board-gh: skipped ${skipped.size} Director-only pending action(s) — run from an un-roled session to resume`);
     const seen = new Set();
-    for (const rec of pending) {
-      if (!rec.action || seen.has(rec.actionId)) continue;
+    for (const rec of withAction) {
+      if (seen.has(rec.actionId)) continue;
       seen.add(rec.actionId);
       runAction(rec.action.name, rec.lane, rec.action.args, rec.actionId);
     }
-    for (const rec of journal.pending()) if (!rec.action) apply(rec);
+    for (const rec of journal.pending()) if (!rec.action && !skipped.has(rec.actionId)) apply(rec);
   }
 
   const laneOf = s => { const m = /^G(\d+)$/i.exec(s || ''); return m ? Number(m[1]) : null; };
@@ -157,6 +186,13 @@ function write(ctx) {
       return issue;
     },
     move(args, effect) { effect('setField', { issue: args.issue, fieldId: cfg.fieldIds.priority, optionId: optionId('priority', args.bucket) }); return args.issue; },
+    'retitle-milestone'(args, effect) { effect('retitleMilestone', { number: args.number, title: args.title }, `M${args.number}`); return args.number; },
+    'add-milestone'(args, effect) {
+      const number = effect('createMilestone', { title: args.objective, description: args.description, due_on: args.due_on }, 'M?');
+      effect('retitleMilestone', { number, title: `M${number} · ${args.objective}` }, `M${number}`);
+      return number;
+    },
+    'close-milestone'(args, effect) { effect('closeMilestone', { number: args.number, summary: args.summary, date: args.date }, `M${args.number}`); return args.number; },
     'set-status'(args, effect) {
       effect('setField', { issue: args.issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status[args.status] });
       effect('comment', { issue: args.issue, body: `status → ${args.status}` });
@@ -226,10 +262,51 @@ function write(ctx) {
       const issue = runAction('add-item', lane, args);
       say(String(issue));
     },
+    'add-milestone'() {
+      const objective = pos[0]; const target = str('target'); const done = str('done');
+      if (!objective || !target || !done) throw new Error('usage: add-milestone "<objective>" --target YYYY-MM-DD --done "<observable>"');
+      const d = new Date(`${target}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(target) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== target) throw new Error('--target must be a real date, YYYY-MM-DD');
+      const all = pagedMilestones(gh, R, 'all');
+      const malformed = all.find(m => /^M\d+ · /.test(m.title) && m.title.replace(/^M\d+ · /, '') === objective && m.title !== `M${m.number} · ${objective}`);
+      if (malformed) { say(`add-milestone: malformed title on #${malformed.number} "${malformed.title}" — the ordinal must equal the milestone number; fix it on GitHub`); return 1; }
+      const existing = all.find(m => m.title === `M${m.number} · ${objective}`);
+      if (existing) { say(`add-milestone: exists: #${existing.number} ${existing.title}`); return 0; }
+      const bare = all.find(m => m.title === objective); // created, crashed before the retitle intent was journaled
+      if (bare) { runAction('retitle-milestone', 'M?', { number: bare.number, title: `M${bare.number} · ${objective}` }); say(`M${bare.number}`); return 0; }
+      const number = runAction('add-milestone', 'M?', { objective, description: `target: ${target} · done: ${done}`, due_on: `${target}T00:00:00Z` });
+      say(`M${number}`);
+    },
+    'close-milestone'() {
+      const key = pos[0]; const summary = str('summary');
+      if (!key) throw new Error('usage: close-milestone <milestone#|title> --summary "<line>"');
+      if (!summary || !summary.trim()) { say('close-milestone: --summary "<one line against done:>" is required'); return 1; }
+      const all = pagedMilestones(gh, R, 'open');
+      const m = /^\d+$/.test(key) ? all.find(x => x.number === Number(key)) : all.find(x => x.title === key);
+      if (!m) { say(`close-milestone: no open milestone "${key}" — run \`board-gh milestones\``); return 1; }
+      const goals = readBoard(gh, cfg).goals.filter(g => g.milestone && g.milestone.number === m.number);
+      if (!goals.length) { say(`close-milestone: ${m.title} has no goals — nothing was done under it`); return 1; }
+      // Completeness: readBoard sees only the newest 50 orch:goal issues. Count the
+      // milestone's goal issues by REST (paged) and refuse if the read window missed any.
+      const restNumbers = [];
+      for (let page = 1; ; page++) {
+        const chunk = gh.rest('GET', `${R}/issues?milestone=${m.number}&labels=orch:goal&state=all&per_page=100&page=${page}`) || [];
+        restNumbers.push(...chunk.map(i => i.number)); if (chunk.length < 100) break;
+      }
+      const readNumbers = goals.map(g => g.issue);
+      const same = restNumbers.length === readNumbers.length && restNumbers.slice().sort((a, b) => a - b).every((n, i) => n === readNumbers.slice().sort((a, b) => a - b)[i]);
+      if (!same) { say(`close-milestone: goal set differs — REST [${restNumbers.join(' ')}], board read [${readNumbers.join(' ')}] (read window too small, or a concurrent move); cannot prove completeness`); return 1; }
+      const open = goals.filter(g => g.status !== 'merged');
+      if (open.length) { say(`close-milestone: not merged: ${open.map(g => g.lane).join(' ')}`); return 1; }
+      runAction('close-milestone', `M${m.number}`, { number: m.number, summary: summary.trim(), date: new Date().toISOString().slice(0, 10) });
+      say(`${m.title} closed (${goals.length} goals)`);
+    },
     move() {
-      const n = Number(pos[0]); if (!n || !pos[1]) throw new Error('usage: move <issue#> <Priority option>');
-      const { g } = findItem(n); optionId('priority', pos[1]);
-      runAction('move', g.lane, { issue: n, lane: g.lane, bucket: pos[1] });
+      const gn = laneOf(pos[0]); const n = gn || Number(pos[0]);
+      if (!n || !pos[1]) throw new Error('usage: move <issue#|G<n>> <Priority option>');
+      optionId('priority', pos[1]);
+      const lane = gn ? goal(gn).lane : findItem(n).g.lane;
+      runAction('move', lane, { issue: n, lane, bucket: pos[1], goalMove: !!gn });
     },
     'set-status'() {
       const n = Number(pos[0]); const s = statusOpt(pos[1]); const { g } = findItem(n);
@@ -261,6 +338,7 @@ function write(ctx) {
       const evidence = str('evidence');
       if (!evidence || !evidence.trim()) { say(`close-goal: --evidence required (ledger line or artifact path naming G${gn})`); return 1; }
       const g = goal(gn);
+      if (!g.items.length) { say(`close-goal: ${g.lane} has no step — every goal has at least S1`); return 1; }
       const open = g.items.filter(i => !i.done);
       if (open.length) { say(`close-goal: ${g.lane} has ${open.length} open item(s): ${open.map(i => '#' + i.issue).join(' ')}`); return 1; }
       runAction('close-goal', g.lane, { issue: gn, lane: g.lane, evidence: evidence.trim() });

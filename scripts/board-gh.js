@@ -117,9 +117,10 @@ function main(argv, deps = {}) {
   const cwd = deps.cwd || process.cwd();
   const stdout = deps.stdout || (s => process.stdout.write(s));
   const gh = deps.gh || makeGh();
+  const env = deps.env || process.env;
   const { pos, opt } = parseArgs(argv);
   const verb = pos[0];
-  if (!verb) { stdout('usage: board-gh <init|milestones|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done|close-goal|read> …\n'); return 1; }
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
@@ -133,7 +134,7 @@ function main(argv, deps = {}) {
   }
   const commonDir = deps.commonDir || require('../hooks/lib/config').resolveRepoKey(cwd);
   if (!commonDir) { stdout('board-gh: not inside a git repository.\n'); return 1; }
-  return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg,
+  return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg, env,
     readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto });
 }
 

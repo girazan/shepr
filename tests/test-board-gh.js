@@ -115,7 +115,7 @@ const BRIEF = path.join(SCRATCH, 'brief.md');
 fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nfeature: numerics\nkill: 3 sessions\n');
 function ghStore() {
   const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', description: '', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', description: '', state: 'open', open_issues: 0, closed_issues: 0 }],
-    issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null };
+    issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null, extraGoalsInMilestone: 0, swapGoalInMilestone: false };
   const FIELD = { F_S: ['status', 'Status'], F_R: ['priority', 'Priority'], F_P: ['pipeline', 'Pipeline'], F_F: ['feature', 'Feature'] };
   const optName = (fid, oid) => Object.entries(CFG.optionIds[FIELD[fid][0]]).find(([, id]) => id === oid)[0];
   const fv = i => st.items[i.node_id] ? [{ project: { id: 'PVT_1' }, fieldValues: { nodes: Object.entries(st.fields).filter(([k]) => k.startsWith(st.items[i.node_id] + ':')).map(([k, o]) => { const fid = k.split(':')[1]; return { name: optName(fid, o), field: { name: FIELD[fid][1] } }; }) } }] : [];
@@ -123,9 +123,11 @@ function ghStore() {
     labels: { nodes: i.labels }, assignees: { nodes: (i.assignees || []).map(login => ({ login })) }, projectItems: { nodes: fv(i) } });
   const handlers = [
     [/GET repos\/o\/r\/milestones\?state=(open|all)/, (b, k) => { const s = k.match(/state=(\w+)/)[1]; const page = Number((k.match(/[?&]page=(\d+)/) || [])[1] || 1); return st.milestones.filter(m => s === 'all' || m.state === s).slice((page - 1) * 100, page * 100); }],
-    [/POST repos\/o\/r\/milestones$/, b => { const m = { number: st.milestones.reduce((x, m) => Math.max(x, m.number), 0) + 1, state: 'open', open_issues: 0, closed_issues: 0, ...b }; st.milestones.push(m); return m; }],
+    [/POST repos\/o\/r\/milestones$/, b => { const m = { number: Math.max(52, ...st.milestones.map(m => m.number)) + 1, state: 'open', open_issues: 0, closed_issues: 0, ...b }; st.milestones.push(m); return m; }],
     [/PATCH repos\/o\/r\/milestones\/(\d+)/, (b, k) => { const m = st.milestones.find(m => m.number === Number(k.match(/milestones\/(\d+)/)[1])); Object.assign(m, b); return m; }],
     [/GET user$/, () => ({ login: 'me' })],
+    [/GET repos\/o\/r\/issues\?milestone=(\d+)&labels=orch:goal/, (b, k) => { const ms = Number(k.match(/milestone=(\d+)/)[1]); const real = Object.values(st.issues).filter(i => i.milestone === ms && i.labels.some(x => x.name === 'orch:goal')); const n = st.extraGoalsInMilestone; if (st.swapGoalInMilestone) return real.map((i, k) => k === 0 ? { number: 9100, labels: i.labels } : i); return n < 0 ? real.slice(0, real.length + n) : real.concat(Array.from({ length: n }, (_, i) => ({ number: 9000 + i, labels: [{ name: 'orch:goal' }] }))); }],
+    [/GET repos\/o\/r\/issues\/(\d+)\/sub_issues/, (b, k) => { const p = Number(k.match(/issues\/(\d+)/)[1]); return Object.values(st.issues).filter(c => st.parent[c.number] === p).map(c => ({ number: c.number, body: c.body, state: c.state })); }],
     // identity probe: all orch issues with the given label, newest first
     [/GET repos\/o\/r\/issues\?/, (b, k) => { const l = decodeURIComponent(k.match(/labels=([^&]*)/)[1]);
       return Object.values(st.issues).filter(i => i.labels.some(x => x.name === l)).sort((a, c) => c.number - a.number); }],
@@ -273,6 +275,106 @@ writeCfg(CFG);
   check('locked repo without board.github → refuse', r1.code === 1 && /board\.github/.test(r1.out));
   const r2 = run(['add-goal', '49', 'z', '--brief', BRIEF], gh, { lockCfg: { __repoLocked: true, board: { github: true } } });
   check('locked repo with board.github → allowed', r2.code === 0);
+}
+// --- add-milestone / close-milestone / move on goals (Director-only, journaled) ----
+{
+  const { st, gh } = ghStore();
+  let r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'operator runs a shift on HMI alone'], gh);
+  const m = st.milestones.find(x => /Ship the HMI$/.test(x.title));
+  check('add-milestone creates then retitles to M<github#> · objective, prints M<github#>', r.code === 0 && m && m.number === 53 && m.title === 'M53 · Ship the HMI' && r.out.trim() === 'M53');
+  check('add-milestone description/due_on follow the grammar', m.description === 'target: 2026-10-31 · done: operator runs a shift on HMI alone' && m.due_on === '2026-10-31T00:00:00Z');
+  const before = st.milestones.length;
+  r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('add-milestone is idempotent on the objective', r.code === 0 && st.milestones.length === before && /exists: #53/.test(r.out));
+  r = run(['add-milestone', 'SHU-HDS operable', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a legacy C1 title does not count as the same objective', r.code === 0 && st.milestones.length === before + 1);
+  st.milestones.push({ number: 70, title: 'M9 · Wrong ordinal', description: '', state: 'open', open_issues: 0, closed_issues: 0 });
+  r = run(['add-milestone', 'Wrong ordinal', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a malformed M<k> title (k ≠ number) is refused, not adopted', r.code === 1 && /malformed/.test(r.out) && !st.milestones.some(m => m.title === 'M70 · Wrong ordinal'));
+  st.milestones.pop();
+  r = run(['add-milestone', 'Anything', '--target', '2026-99-99', '--done', 'x'], gh);
+  check('add-milestone rejects an impossible date', r.code === 1 && /YYYY-MM-DD/.test(r.out));
+  r = run(['add-milestone', 'Anything', '--target', '2026-10-31'], gh);
+  check('add-milestone requires --done', r.code === 1 && /usage: add-milestone/.test(r.out));
+  r = run(['add-milestone', 'Anything', '--target', '2026-10-31', '--done', 'x'], gh, { env: { ORCH_ROLE: 'coordinator' } });
+  check('add-milestone refuses inside a roled pane, before any call', r.code === 1 && /refused/.test(r.out) && /ORCH_ROLE=coordinator/.test(r.out) && st.milestones.length === before + 1);
+
+  run(['add-goal', String(m.number), 'HDS', '--brief', BRIEF], gh);
+  const s1 = Number(run(['add-item', 'G140', 'the only step', '--gate', 'DONE'], gh).out.trim());
+  r = run(['close-milestone', String(m.number), '--summary', 'shift ran alone'], gh);
+  check('close-milestone refuses while a goal is not merged, names it', r.code === 1 && /G140/.test(r.out) && m.state === 'open');
+  st.extraGoalsInMilestone = 1; // one orch:goal issue the 50-goal read window would miss
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal count exceeds what read returned', r.code === 1 && /differs/.test(r.out));
+  st.extraGoalsInMilestone = -1; // REST returns fewer than read (concurrent move)
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal count is lower than read', r.code === 1 && /differs/.test(r.out));
+  st.extraGoalsInMilestone = 0;
+  st.swapGoalInMilestone = true; // same count, different membership (merged goal moved out, open one moved in)
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal set differs at equal count', r.code === 1 && /differs/.test(r.out));
+  st.swapGoalInMilestone = false;
+  r = run(['move', 'G140', 'Later'], gh);
+  check('move on a goal sets the goal Priority', r.code === 0 && st.fields['PI_I_140:F_R'] === 'r3');
+  r = run(['move', 'G140', 'Now'], gh, { env: { ORCH_ROLE: 'dev' } });
+  check('move on a goal refuses inside a roled pane', r.code === 1 && /refused/.test(r.out) && st.fields['PI_I_140:F_R'] === 'r3');
+  r = run(['add-goal', '49', 'empty', '--brief', BRIEF], gh); // add-goal→140, add-item→141, so this goal is 142
+  r = run(['close-goal', 'G142', '--evidence', 'iter 1 · G142 · done'], gh);
+  check('close-goal refuses a goal with no step', r.code === 1 && /no step/.test(r.out) && st.issues[142].state === 'open');
+  run(['done', String(s1)], gh);
+  run(['close-goal', 'G140', '--evidence', 'iter 1 · G140 · done'], gh);
+  r = run(['close-milestone', 'M53 · Ship the HMI', '--summary', 'shift ran alone'], gh);
+  check('close-milestone by title closes when every goal is merged, appends closed/summary', r.code === 0 && m.state === 'closed' && /\nclosed: \d{4}-\d{2}-\d{2} · summary: shift ran alone$/.test(m.description) && /closed \(1 goals\)/.test(r.out));
+  r = run(['close-milestone', '52', '--summary', 'x'], gh);
+  check('close-milestone refuses a milestone with zero goals', r.code === 1 && /nothing was done/.test(r.out));
+  r = run(['close-milestone', '52'], gh);
+  check('close-milestone requires --summary', r.code === 1 && /--summary/.test(r.out));
+  r = run(['close-milestone', '52', '--summary', 'x'], gh, { env: { ORCH_ROLE: 'coordinator' } });
+  check('close-milestone refuses inside a roled pane', r.code === 1 && /refused/.test(r.out));
+}
+// --- replay never executes a Director-only action in a roled pane -----------------
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh); // un-roled, before the intent exists
+  openJournal(JOURNAL).intent({ opId: 'D:0', actionId: 'D', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args: { objective: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } }, desired: { title: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } });
+  const r = run(['add-item', 'G140', 'x'], gh, { env: { ORCH_ROLE: 'dev' } });
+  check('roled add-item leaves the pending add-milestone pending and says so', r.code === 0 && !st.milestones.some(m => /Pending/.test(m.title)) && /skipped 1 Director-only pending/.test(r.out) && openJournal(JOURNAL).pending().length === 1);
+  const r2 = run(['add-item', 'G140', 'y'], gh);
+  check('un-roled call replays it, create then retitle', r2.code === 0 && st.milestones.some(m => m.title === 'M53 · Pending') && openJournal(JOURNAL).pending().length === 0);
+}
+// --- crash between create and retitle: replay retitles, never duplicates ---------
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  st.milestones.push({ number: 53, title: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const args = { objective: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' };
+  openJournal(JOURNAL).intent({ opId: 'H:0', actionId: 'H', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args }, desired: { title: 'Half done', description: args.description, due_on: args.due_on } });
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  check('replay after a crash between create and retitle adopts #53 and retitles it', st.milestones.filter(m => /Half done$/.test(m.title)).length === 1 && st.milestones[2].title === 'M53 · Half done' && openJournal(JOURNAL).pending().length === 0);
+}
+// --- crash between create-done and retitle-intent: no journal record, bare title -----
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  st.milestones.push({ number: 53, title: 'Bare', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const before = st.milestones.length;
+  const r = run(['add-milestone', 'Bare', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a bare <objective> title is half-done: retitled, not reused, not duplicated', r.code === 0 && r.out.trim() === 'M53' && st.milestones.length === before && st.milestones[2].title === 'M53 · Bare' && openJournal(JOURNAL).pending().length === 0);
+}
+// --- milestone lookups page past 100 -------------------------------------------------
+{
+  const { st, gh } = ghStore();
+  for (let i = 0; i < 100; i++) st.milestones.push({ number: 200 + i, title: `filler ${i}`, description: '', state: 'open', open_issues: 0, closed_issues: 0 });
+  st.milestones.push({ number: 300, title: 'M300 · On page two', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const before = st.milestones.length;
+  let r = run(['add-milestone', 'On page two', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('add-milestone finds an existing milestone on page 2', r.code === 0 && /exists: #300/.test(r.out) && st.milestones.length === before);
+  r = run(['close-milestone', '300', '--summary', 'x'], gh);
+  check('close-milestone finds its target on page 2 (refuses for zero goals, not "no open milestone")', r.code === 1 && /has no goals/.test(r.out) && !/no open milestone/.test(r.out));
 }
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();
