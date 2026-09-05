@@ -26,6 +26,7 @@ judgment, verdict-only; suited cheap models execute.
    `blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue
    (`/orch:go G142` names one). Never silently switch focus mid-session.
    Skip a candidate whose files (every domain in its `domains:`, by contract paths at HEAD) intersect a `running` goal's — two running goals never own a common file.
+   A roled pane records the pick so the guardrails and the Stop rule know the focus goal: `node "<plugin>/scripts/session-marker.js" set --goal G<n>` (no-op message when `ORCH_SESSION_ID` is unset — a plain session has no marker).
 3. Report ≤5 lines, opening with
    `focus: G<n> · <name> (+<k> open)` — then phase, blockers (⚠ + age if
    a lane sat in one status past `board.staleDays`, default 3),

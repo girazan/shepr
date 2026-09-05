@@ -10,6 +10,7 @@
 'use strict';
 const { execFileSync } = require('child_process');
 const { readStdin, loadConfig, loadLock, appendAudit, AUDIT_REL } = require('./lib/config');
+const { globToRe } = require('./lib/contract');
 
 const RANK = { none: 0, commit: 1, push: 2 };
 // Deny-by-default: only local/read commands escape the gate untouched.
@@ -204,6 +205,13 @@ function die(reason, extra) {
 
 if (oversized) die('oversized hook payload — command unverifiable.', { action: 'invalid' });
 if (cfg.__corrupt) die('.claude/orch.json is not valid JSON — the contract cannot be read; fix it first.', { action: 'invalid' });
+// Spec §6 row 1: the gate reviewer never commits or pushes. Keyed on env,
+// hence ADVISORY — but a typed commit/push inside a reviewer subagent is
+// exactly the drift this catches. Its evidence commit is the script's own
+// (child_process, unseen here). Holds with or without a contract.
+if (process.env.ORCH_ROLE === 'reviewer') {
+  die('ORCH_ROLE=reviewer — the gate reviewer never commits or pushes; `orch review` commits docs/reviews/ itself (ADVISORY: keyed on the role).', { role: 'reviewer', label: 'ADVISORY' });
+}
 if (!contract) process.exit(0);
 // Contract key present: validate the WHOLE shape before any inactive/no-op decision.
 if (typeof contract !== 'object' || contract === null || Array.isArray(contract) ||
@@ -302,15 +310,6 @@ const auditRel = AUDIT_REL.replace(/\\/g, '/');
 files = files.filter(f => f.replace(/\\/g, '/') !== auditRel);
 if (!files.length) {
   die('only the audit file is pending — nothing gateable — the operator decides.');
-}
-
-function globToRe(glob) {
-  // \u0000 sentinel: cannot occur in a path, so a glob containing spaces
-  // ("my docs/**") can never collide with the ** placeholder.
-  const parts = glob.split('/').map(part =>
-    part === '**' ? '\u0000' :
-    part.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]'));
-  return new RegExp('^' + parts.join('/').replace(/\u0000\//g, '(?:.*/)?').replace(/\u0000/g, '.*') + '$');
 }
 
 let overall = 2, governing = null, offenders = [];

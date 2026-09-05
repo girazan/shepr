@@ -69,7 +69,7 @@ One file, `.claude/orch.json`, at your repo root:
 
 There is no bare `/orch` — always one of these five. [Architecture diagram →](docs/orch-architecture.html)
 
-## 🧱 Eight hooks — enforced, not remembered
+## 🧱 Eleven hooks — enforced, not remembered
 
 | Hook | Plain meaning |
 |---|---|
@@ -81,6 +81,9 @@ There is no bare `/orch` — always one of these five. [Architecture diagram →
 | 📡 `fleet-context` | Watches your *delegates'* fuel gauges, not just your own: one alert per band as an agent burns context, telling you to bank its state before autocompaction takes the choice away. Point it at any fleet CLI. |
 | ⛽ `context-monitor` | Low-fuel gauge: one "finish up" warning, one "save state now". Each fires once. |
 | 🔄 `run-on-commit` | Re-runs a command you choose after each commit, so derived artifacts never go stale. |
+| 🎭 `role-guardrails` | With `ORCH_ROLE` set on a pane: a reviewer edits only `docs/reviews/`, nobody else writes there, the coordinator reads only handoffs/reviews/config/its goal's worklog, the architect writes no contract-domain path, the dev never rewrites the worklog's BRIEF. Advisory — the role is an environment variable. |
+| 🪪 `session-start` | Turns a pane's `ORCH_ROLE`/`ORCH_IDS` into a session marker so the other two know who is working on what since when. |
+| 📝 `stop-handoff` | A roled pane that edited anything may not stop until its handoff file exists (`tmp/handoffs/…`), once; over-budget handoffs and plan sections get one advisory line. |
 
 ⚠️ **What that costs, honestly:** the AI can't `pull`, `merge`, `rebase`,
 `cherry-pick`, `revert`, `tag`, `commit --amend`, use an alias, or touch
@@ -89,6 +92,8 @@ can't commit while a domain you reserved is dirty, or make a branch's first
 push with no resolvable remote default. Every block names you as the
 override. And it is **not a sandbox**: it reads the commands the AI types,
 so a script that runs `git` from inside is out of its sight.
+Role guardrails (`ORCH_ROLE`) are **advisory** by design — the role is an environment variable any pane can set, and a `cat` inside a script is a read no hook sees.
+And until `/orch:setup` mirrors your contract into `~/.claude/orch-lock.json`, every contract-keyed guard reads the agent-writable `.claude/orch.json`: enforced in mechanism, advisory in fact. Each audit line says which it read (`contract: locked|unlocked`).
 
 ## 🧾 What it leaves behind
 
@@ -132,7 +137,7 @@ clause** moved less than the usual wobble = not an improvement (statistical
 significance) · **guardrails** rules enforced by programs, not by asking
 nicely (policy-as-code) · **contract** your map of who decides and who
 ships (decision rights / RACI) · **ADR** architecture decision record ·
-**ship grant** how far the AI may push on its own (deploy permission) · **recipe** the named stage sequence between a step's brief and its gate — `tdd · debug · iterate · cleanup · fast` on steps, `spec · research` for shaping; one page each under `skills/go/recipes/`, hashed into the review manifest · **stage** one named phase of a recipe; `workflow.tools` maps a stage to one chosen skill pinned by version (`tdd@<sha12>`, `to-spec@2.1.0`), orch's native fallback otherwise — data, never read by a hook.
+**ship grant** how far the AI may push on its own (deploy permission) · **handoff** a role's ≤40-line exit note under `tmp/handoffs/` (scratch; the worklog is the record) · **session marker** `{role, milestone, goal, step, startedAt}` per pane, in the git common dir — what the role hooks key on · **recipe** the named stage sequence between a step's brief and its gate — `tdd · debug · iterate · cleanup · fast` on steps, `spec · research` for shaping; one page each under `skills/go/recipes/`, hashed into the review manifest · **stage** one named phase of a recipe; `workflow.tools` maps a stage to one chosen skill pinned by version (`tdd@<sha12>`, `to-spec@2.1.0`), orch's native fallback otherwise — data, never read by a hook.
 
 **Renamed in v0.4.0** (if you saw the earlier version): front → goal ·
 dossier → worklog · hook wall → guardrails · judge independence → independent

@@ -128,5 +128,8 @@ check('validateTiers: unknown tiers key reported', C.validateTiers({ schemaVersi
 check('validateTiers: domain without tiers is ignored', C.validateTiers({ schemaVersion: 2, domains: {
   web: { paths: ['web/**'], decide: 'ai', ship: 'commit' } } }).length === 0);
 
+check('globToRe: ** spans directories, * stays in one, **/ is optional',
+  C.globToRe('src/**').test('src/a/b.js') && !C.globToRe('src/*').test('src/a/b.js') && C.globToRe('**/*.md').test('x.md') && C.globToRe('**/*.md').test('deep/nest/x.md') && !C.globToRe('docs/**').test('docs2/evil.bin'));
+
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);

@@ -157,5 +157,16 @@ check('board gathers the tools check and renders the TOOLS line', board.includes
 // 13. README states recipes and stage routing once.
 check('README glossary has recipe and stage; setup row mentions workflow.tools', readme.includes('**recipe**') && readme.includes('**stage**') && readme.includes('workflow.tools'));
 
+// 14. Handoff and marker grammars — canonical in delegate.md; go only invokes the CLI.
+for (const h of ['tmp/handoffs/M<n>.G<k>.S<j>-dev.md', 'tmp/handoffs/M<n>.G<k>-architect.md', 'tmp/handoffs/M<n>-coordinator.md']) {
+  check(`delegate states the handoff path ${h}`, delegate.includes(h));
+  check(`no other skill restates ${h}`, ![go, goal, board, work, loop].some(t => t.includes(h)));
+}
+check('delegate states the env pair a launcher sets', delegate.includes('ORCH_ROLE=dev|architect|coordinator|reviewer') && delegate.includes('ORCH_IDS=M<n>.G<k>.S<j>'));
+check('delegate states the roster entry with orchRole and ids', delegate.includes('"orchRole": "dev"') && delegate.includes('"ids": "M53.G142.S2"') && delegate.includes('"vehicle": "herdr"'));
+check('delegate names the marker path', delegate.includes('<git-common-dir>/orch/session-<sessionId>.json'));
+check('go records the focus pick in the marker', go.includes('session-marker.js" set --goal G<n>'));
+check('README counts eleven hooks and states the unlocked-contract degradation', /Eleven hooks/.test(readme) && readme.includes('advisory in fact') && readme.includes('contract: locked|unlocked'));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

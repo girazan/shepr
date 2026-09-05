@@ -36,11 +36,11 @@ function g(...args) {
 }
 function gTry(...args) { try { return g(...args); } catch { return null; } }
 
-function run(cmd) {
+function run(cmd, extraEnv = {}) {
   const payload = JSON.stringify({ session_id: 's', cwd: REPO, tool_input: { command: cmd } });
   try {
     execFileSync('node', [HOOK], { input: payload, cwd: REPO,
-      env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME }, stdio: ['pipe', 'pipe', 'pipe'] });
+      env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME, ORCH_ROLE: '', ...extraEnv }, stdio: ['pipe', 'pipe', 'pipe'] });
     return { code: 0, stderr: '' };
   } catch (e) {
     return { code: e.status, stderr: (e.stderr || Buffer.alloc(0)).toString() };
@@ -157,6 +157,20 @@ check('13. staged docs file, commit -> 0', run('git commit -m x').code === 0);
 g('commit', '-m', 'd13');
 check('14. its push -> 0 (push grant)', run('git push').code === 0);
 g('push');
+
+// ===================================================== REVIEWER (spec §6 row 1, ADVISORY)
+writeFile('docs/d14r.md');
+g('add', 'docs/d14r.md');
+{ const r = run('git commit -m x', { ORCH_ROLE: 'reviewer' });
+  check('14r-a. commit under ORCH_ROLE=reviewer -> 2, names the role and ADVISORY', r.code === 2 && /reviewer/.test(r.stderr) && /ADVISORY/.test(r.stderr)); }
+check('14r-b. audit line carries role:reviewer + label:ADVISORY', auditLines().some(a => a.role === 'reviewer' && a.label === 'ADVISORY' && a.verdict === 'BLOCK'));
+check('14r-c. push under reviewer -> 2', run('git push', { ORCH_ROLE: 'reviewer' }).code === 2);
+check('14r-d. read op under reviewer -> 0', run('git status', { ORCH_ROLE: 'reviewer' }).code === 0);
+check('14r-e. other role, same commit -> 0', run('git commit -m x', { ORCH_ROLE: 'dev' }).code === 0);
+setCfg({});
+check('14r-f. no contract at all, reviewer commit still -> 2', run('git commit -m x', { ORCH_ROLE: 'reviewer' }).code === 2);
+setCfg(BASE_CONTRACT);
+g('commit', '-m', 'd14r'); g('push');
 
 writeFile('src/core/c15.js');
 g('add', 'src/core/c15.js');

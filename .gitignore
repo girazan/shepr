@@ -8,3 +8,6 @@ docs/superpowers/
 
 # Pocock skills local tracker (spec §9 d.32)
 .scratch/
+
+# role handoffs are scratch (spec §4 "handoff"); the worklog is the record
+tmp/handoffs/
