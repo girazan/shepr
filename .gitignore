@@ -5,3 +5,6 @@ docs/*.visual-check.*
 .superpowers/
 docs/serve-tailnet.js
 docs/superpowers/
+
+# Pocock skills local tracker (spec §9 d.32)
+.scratch/
