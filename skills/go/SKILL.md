@@ -22,10 +22,10 @@ judgment, verdict-only; suited cheap models execute.
 
 1. Read: `node "<plugin>/scripts/board-gh.js" read --json` · the active
    goal's worklog · `docs/adr/` for `Status: proposed` · the contract.
-2. Focus — exactly one goal per session when several are open: the
-   operator's named goal (`/orch:go G142`) wins; else the goal whose
-   worklog was most recently touched; else the first non-blocked goal in
-   board order. Never silently switch focus mid-session.
+2. Focus — exactly one goal per session when several are open:
+   `blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue
+   (`/orch:go G142` names one). Never silently switch focus mid-session.
+   Skip a candidate whose files (every domain in its `domains:`, by contract paths at HEAD) intersect a `running` goal's — two running goals never own a common file.
 3. Report ≤5 lines, opening with
    `focus: G<n> · <name> (+<k> open)` — then phase, blockers (⚠ + age if
    a lane sat in one status past `board.staleDays`, default 3),
@@ -47,7 +47,7 @@ steps are visible, never silent.
 ## The board
 
 Canonical store: GitHub Issues + the repo's Project (`.orch/board.json`,
-spec §4). Milestone (operator's, `C<n> …`) → goal = `orch:goal` issue
+spec §4). Milestone (operator's, `M<n> · …`; legacy `C<n>` still sorts) → goal = `orch:goal` issue
 (`G<n>`) → items = sub-issues; the item marked `gate:` closes the
 goal. Goal status is never written — it is folded from the items:
 `merged` (goal closed) · `blocked` (an item has `orch:blocked`) ·
@@ -106,13 +106,14 @@ here; if wording ever differs, this section wins.
    findings note in the worklog.
 3. Execution shape: number+cause-unknown → measurement-first iteration ·
    mechanical/spec-complete → cheapest tier, single review ·
-   judgment-heavy/high-consequence → mid-tier implement + dual review.
+   judgment-heavy/high-consequence → mid-tier implement (the review count comes from the contract's `review:` flag, never from here).
    Tier + delegation vehicle come from `delegate.md` (load it here).
 4. `decide: human` → present plan ≤5 lines, STOP; write the ROUTE line
    only on approval, with `approved:operator`. `decide: ai` → write it
    with `approved:auto`.
 5. Append to the worklog, exactly:
-   `ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · approved:<operator|auto> · <date>`
+   `ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · base:<sha> · review:<single|dual> · approved:<operator|auto> · <date>`
+   `base:` is `git rev-parse HEAD` at the moment this line is first written (the first review range starts here); `review:` is `dual` when any domain this goal touches carries `review: "dual"` in the contract, else `single`.
    Then enter phase work.
 
 Complete when: the ROUTE line is in the worklog with its approval

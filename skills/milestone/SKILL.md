@@ -1,0 +1,58 @@
+---
+name: milestone
+description: >
+  Define, split, prioritize, or close a milestone — the long-horizon
+  objective that goals hang under. Director-only: refuses inside any
+  pane that carries ORCH_ROLE. Do NOT use to shape a goal (/orch:goal),
+  drive work (/orch:go), or edit the contract (/orch:setup).
+---
+
+# /orch:milestone — scope lives here
+
+Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
+If `ORCH_ROLE` is set in this session's environment, stop: milestones
+are the Director's and this pane is a role. Say which role and exit.
+(The verbs refuse too; both are guardrails, not credentials.)
+
+A milestone is exactly three fields on the GitHub Milestone — no brief,
+metric, kill line or review; those belong to goals:
+
+    title:        M<n> · <objective>
+    description:  target: <YYYY-MM-DD> · done: <observable>
+    due date:     the same target
+
+Any number of milestones may be open at once; each goal attaches to one.
+
+## define
+
+Three questions, one at a time (skill: superpowers:brainstorming or
+mattpocock grilling if installed, else ask plainly):
+
+1. The objective in one line — what is true when this is done?
+2. The target date.
+3. The observable that proves it — a number, a demo, a shift run alone.
+
+Then `add-milestone "<objective>" --target <YYYY-MM-DD> --done "<observable>"`.
+It prints `M<n>` — `n` is the GitHub milestone number and the title becomes `M<n> · <objective>`; idempotent on the objective.
+
+## split
+
+Read the milestone and the Project's Feature options (they are the
+contract's domain names). Propose ordered candidate goals — one line
+each, a rough size (small / big), the Feature each belongs to. Create
+NOTHING. For each goal the Director accepts, hand to `/orch:goal`.
+
+## prioritize
+
+Show the milestone's goals in board order (`read`; goals sort Priority
+first across milestones). For each change: `move G<n> <Priority option>`.
+The Coordinator's goal-pick rule reads that order.
+
+## close
+
+When every goal under the milestone is merged, read the Coordinator's
+summary line from `tmp/handoffs/M<n>-coordinator.md`, show it against
+`done:`, and ask for acknowledgement. Then
+`close-milestone <number|title> --summary "<that line>"`. It refuses
+while a goal is not merged, when the milestone has no goals, or when the
+board read window cannot prove completeness. Nothing else is written.
