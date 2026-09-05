@@ -406,5 +406,43 @@ writeCfg(CFG);
   r = run(['add-item', 'G140', 'x', '--recipe'], gh);
   check('bare --recipe is refused', r.code === 1 && /--recipe requires a value/.test(r.out));
 }
+// --- feature: parsed from the BRIEF; items inherit ---------------------------------
+{
+  const { st, gh } = ghStore();
+  let r = run(['add-goal', '49', 'HDS', '--brief', BRIEF], gh);
+  check('add-goal sets the goal Feature from the brief feature: line', r.code === 0 && st.fields['PI_I_140:F_F'] === 'f1');
+  check('add-goal writes no base: line', !/^base:/m.test(st.issues[140].body));
+  const noFeat = path.join(SCRATCH, 'brief-nofeat.md'); fs.writeFileSync(noFeat, 'BRIEF\ngoal: z\ndomains: hmi\n');
+  r = run(['add-goal', '49', 'Z', '--brief', noFeat], gh);
+  check('add-goal refuses a brief without feature: when the Project has a Feature field', r.code === 1 && /feature:/.test(r.out) && !st.issues[141]);
+  const notInDomains = path.join(SCRATCH, 'brief-notin.md'); fs.writeFileSync(notInDomains, 'BRIEF\ngoal: z\ndomains: numerics\nfeature: hmi\n');
+  r = run(['add-goal', '49', 'Z', '--brief', notInDomains], gh);
+  check('add-goal refuses a feature: that is not one of domains:', r.code === 1 && /not one of domains/.test(r.out) && !st.issues[141]);
+  const badFeat = path.join(SCRATCH, 'brief-bad.md'); fs.writeFileSync(badFeat, 'BRIEF\ngoal: z\nfeature: nope\n');
+  r = run(['add-goal', '49', 'Z', '--brief', badFeat], gh);
+  check('add-goal refuses an unknown feature before writing', r.code === 1 && /unknown feature "nope"/.test(r.out) && !st.issues[141]);
+  r = run(['add-item', 'G140', 'inherits'], gh);
+  const n1 = Number(r.out.trim());
+  check('add-item inherits the goal feature', st.fields['PI_I_' + n1 + ':F_F'] === 'f1');
+  r = run(['add-item', 'G140', 'overrides', '--feature', 'hmi'], gh);
+  const n2 = Number(r.out.trim());
+  check('add-item --feature overrides the inherited value', st.fields['PI_I_' + n2 + ':F_F'] === 'f2');
+  // a record journaled before this task (feature: null in args) still inherits on replay
+  const { openJournal } = require('../scripts/lib/journal');
+  const args = { goal: 140, lane: 'G140', title: 'old', text: 'old', body: require('../scripts/board-gh').bodyOf('old', { step: 'S9' }), labels: ['orch:item'], milestoneNumber: 49, bucket: 'Now', pipeline: null, feature: null, assignee: null };
+  openJournal(JOURNAL).intent({ opId: 'B:0', actionId: 'B', lane: 'G140', subEffect: 'createIssue', action: { name: 'add-item', args }, desired: { goal: 140, title: 'old', text: 'old', body: args.body, labels: args.labels, milestoneNumber: 49, assignee: null } });
+  run(['add-item', 'G140', 'trigger replay'], gh);
+  const old = Object.values(st.issues).find(i => i.title === 'old');
+  check('replayed pre-upgrade add-item inherits the goal feature', old && st.fields['PI_' + old.node_id + ':F_F'] === 'f1');
+  delete st.fields['PI_I_140:F_F']; // the goal predates the Feature field (adopt mode); only its BRIEF says feature:
+  r = run(['add-item', 'G140', 'late field'], gh);
+  check('add-item falls back to the BRIEF feature: line when the goal has no Feature value', st.fields['PI_I_' + r.out.trim() + ':F_F'] === 'f1');
+  // a goal record journaled before this task (no feature key) parses feature: from its body on replay
+  const gBody = fs.readFileSync(BRIEF, 'utf8');
+  openJournal(JOURNAL).intent({ opId: 'C:0', actionId: 'C', lane: 'G?', subEffect: 'createGoal', action: { name: 'add-goal', args: { name: 'pre-upgrade goal', body: gBody, milestoneNumber: 49 } }, desired: { title: 'pre-upgrade goal', body: gBody, milestoneNumber: 49 } });
+  run(['add-item', 'G140', 'trigger replay again'], gh);
+  const pre = Object.values(st.issues).find(i => i.title === 'pre-upgrade goal');
+  check('replayed pre-upgrade add-goal sets Feature from the body feature: line', pre && st.fields['PI_' + pre.node_id + ':F_F'] === 'f1');
+}
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();

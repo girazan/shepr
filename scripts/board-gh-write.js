@@ -164,6 +164,8 @@ function write(ctx) {
     return map[k];
   }
 
+  const featureOf = b => { const m = /^feature:\s*(.+)$/m.exec(b || ''); return m ? m[1].trim() : null; };
+
   // ACTIONS[name](args, effect) — pure sub-effect sequencing, no validation,
   // no probing beyond what FX already does. Parsing/validation lives in
   // VERBS below and runs once, on the live call only.
@@ -173,16 +175,23 @@ function write(ctx) {
       const lane = `G${issue}`; // lane is unknown until createGoal returns
       effect('addToProject', { issue }, lane);
       effect('setField', { issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status.Todo }, lane);
+      // A record journaled before feature: existed carries no args.feature; parse the body so replay still sets the field.
+      const fm = /^feature:\s*(.+)$/m.exec(args.body || '');
+      const feature = args.feature || (cfg.fieldIds.feature && fm ? fm[1].trim() : null);
+      if (feature) effect('setField', { issue, fieldId: cfg.fieldIds.feature, optionId: optionId('feature', feature) }, lane);
       return issue;
     },
     'add-item'(args, effect) {
+      // Inherit on replay too: a pre-upgrade record carries feature: null. A goal from adopt mode
+      // (no Feature field then) has feature === null forever; fall back to its BRIEF line.
+      const feature = args.feature || (cfg.fieldIds.feature ? (goal(args.goal).feature || featureOf(goal(args.goal).brief)) : null);
       const issue = effect('createIssue', { goal: args.goal, title: args.title, text: args.text, body: args.body, labels: args.labels, milestoneNumber: args.milestoneNumber, assignee: args.assignee });
       effect('addSubIssue', { issue, goal: args.goal });
       effect('addToProject', { issue });
       effect('setField', { issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status.Todo });
       effect('setField', { issue, fieldId: cfg.fieldIds.priority, optionId: optionId('priority', args.bucket) });
       if (args.pipeline) effect('setField', { issue, fieldId: cfg.fieldIds.pipeline, optionId: optionId('pipeline', args.pipeline) });
-      if (args.feature) effect('setField', { issue, fieldId: cfg.fieldIds.feature, optionId: optionId('feature', args.feature) });
+      if (feature) effect('setField', { issue, fieldId: cfg.fieldIds.feature, optionId: optionId('feature', feature) });
       return issue;
     },
     move(args, effect) { effect('setField', { issue: args.issue, fieldId: cfg.fieldIds.priority, optionId: optionId('priority', args.bucket) }); return args.issue; },
@@ -244,7 +253,14 @@ function write(ctx) {
         milestoneNumber = m.number;
       }
       const body = fs.readFileSync(brief, 'utf8');
-      const issue = runAction('add-goal', 'G?', { name, body, milestoneNumber });
+      const fm = body.match(/^feature:\s*(.+)$/m); const feature = fm ? fm[1].trim() : null;
+      const dm = body.match(/^domains:\s*(.+)$/m); const domains = dm ? dm[1].split(/[,\s]+/).filter(Boolean) : [];
+      if (feature && domains.length && !domains.includes(feature)) { say(`add-goal: feature: ${feature} is not one of domains: ${domains.join(', ')} — the Feature is the goal's primary domain`); return 1; }
+      if (cfg.fieldIds.feature) {
+        if (!feature) { say('add-goal: the BRIEF needs a `feature:` line (the Project has a Feature field = contract domains)'); return 1; }
+        optionId('feature', feature); // validate before any write
+      }
+      const issue = runAction('add-goal', 'G?', { name, body, milestoneNumber, feature: cfg.fieldIds.feature ? feature : null });
       say(`G${issue}`);
     },
     'add-item'() {
@@ -254,7 +270,8 @@ function write(ctx) {
       const bucket = str('bucket') || cfg.buckets[0]; const pipeline = str('pipeline');
       optionId('priority', bucket); // validate before any write
       if (pipeline) optionId('pipeline', pipeline);
-      const feature = str('feature'); if (feature) optionId('feature', feature);
+      const feature = str('feature') || g.feature || featureOf(g.brief);
+      if (feature) optionId('feature', feature);
       const accept = str('accept'); const recipe = str('recipe');
       if (recipe && !EXEC_RECIPES.includes(recipe)) throw new Error(`recipe must be one of ${EXEC_RECIPES.join(' | ')}`);
       // step: S<j> = max over ALL sub-issues (REST, paged) + 1 — the read query stops at 40.
