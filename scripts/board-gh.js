@@ -39,13 +39,18 @@ function stripOpId(body) {
   // The opId marker is identity metadata (spec §4.3), never board content.
   return (body || '').split(/\r?\n/).filter(l => !/^<!-- opId:.* -->$/.test(l.trim()));
 }
+const RECIPES = ['spec', 'tdd', 'iterate', 'debug', 'research', 'cleanup', 'fast']; // spec §8
+const EXEC_RECIPES = ['tdd', 'iterate', 'debug', 'cleanup', 'fast']; // the only ones a step may carry
+
 function parseBody(body) {
   const lines = stripOpId(body).filter(l => l.trim() !== MARK);
   const grab = re => { const m = lines.map(l => l.match(re)).find(Boolean); return m ? m[1].trim() : null; };
-  return { text: (lines[0] || '').trim(), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i) };
+  return { text: (lines[0] || '').trim(), step: grab(/^step:\s*(S\d+)/i), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i),
+    accept: grab(/^accept:\s*(.+)$/i), recipe: grab(/^recipe:\s*(\S+)/i) };
 }
-function bodyOf(text, { outcome, gate } = {}) {
-  return [text, '', outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null, MARK].filter(x => x !== null).join('\n');
+function bodyOf(text, { step, outcome, gate, accept, recipe } = {}) {
+  return [text, '', step ? `step: ${step}` : null, outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null,
+    accept ? `accept: ${accept}` : null, recipe ? `recipe: ${recipe}` : null, MARK].filter(x => x !== null).join('\n');
 }
 
 // ponytail: page sizes are bounded by GitHub's 500k-node estimate (goals × projectItems × fieldValues × subIssues × …);
@@ -77,7 +82,7 @@ function readBoard(gh, cfg) {
       const status = fieldOf(i, cfg, 'Status');
       return { issue: i.number, labels, status, pipeline: fieldOf(i, cfg, 'Pipeline'), feature: fieldOf(i, cfg, 'Feature'),
         bucket: fieldOf(i, cfg, 'Priority') || cfg.buckets[0],
-        text: b.text || i.title, outcome: b.outcome, gate: b.gate,
+        text: b.text || i.title, outcome: b.outcome, gate: b.gate, step: b.step, accept: b.accept, recipe: b.recipe,
         done: i.state === 'CLOSED' || status === 'Done', you: labels.includes('orch:you'), updated: i.updatedAt };
     });
     const forFold = items.map(i => ({ labels: i.labels, status: i.status,
@@ -135,8 +140,8 @@ function main(argv, deps = {}) {
   const commonDir = deps.commonDir || require('../hooks/lib/config').resolveRepoKey(cwd);
   if (!commonDir) { stdout('board-gh: not inside a git repository.\n'); return 1; }
   return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg, env,
-    readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto });
+    readBoard, bodyOf, MARK, STATUS_OPTS, EXEC_RECIPES, openJournal, withLock, crypto });
 }
 
-module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS };
+module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS, RECIPES, EXEC_RECIPES };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

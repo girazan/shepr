@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 
 function write(ctx) {
-  const { verb, pos, opt, cfg, gh, stdout, commonDir, env, readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
+  const { verb, pos, opt, cfg, gh, stdout, commonDir, env, readBoard, bodyOf, MARK, STATUS_OPTS, EXEC_RECIPES, openJournal, withLock, crypto } = ctx;
   const { pagedMilestones } = require('./board-gh');
   const say = s => stdout(s + '\n');
   // parseArgs stores a bare `--flag` as true; every value-taking option must reject that.
@@ -249,14 +249,24 @@ function write(ctx) {
     },
     'add-item'() {
       const gn = laneOf(pos[0]); const text = pos[1];
-      if (!gn || !text) throw new Error('usage: add-item G<n> "<text>" [--you] [--bucket <Priority option>] [--pipeline <opt>] [--feature <opt>] [--outcome …] [--gate LABEL]');
+      if (!gn || !text) throw new Error('usage: add-item G<n> "<text>" [--you] [--bucket <Priority option>] [--pipeline <opt>] [--feature <opt>] [--outcome …] [--gate LABEL] [--accept "<criterion>"] [--recipe <name>]');
       const g = goal(gn); const lane = g.lane;
       const bucket = str('bucket') || cfg.buckets[0]; const pipeline = str('pipeline');
       optionId('priority', bucket); // validate before any write
       if (pipeline) optionId('pipeline', pipeline);
       const feature = str('feature'); if (feature) optionId('feature', feature);
+      const accept = str('accept'); const recipe = str('recipe');
+      if (recipe && !EXEC_RECIPES.includes(recipe)) throw new Error(`recipe must be one of ${EXEC_RECIPES.join(' | ')}`);
+      // step: S<j> = max over ALL sub-issues (REST, paged) + 1 — the read query stops at 40.
+      let maxStep = 0;
+      for (let page = 1; ; page++) {
+        const subs = gh.rest('GET', `${R}/issues/${gn}/sub_issues?per_page=100&page=${page}`) || [];
+        for (const sub of subs) { const m = /^step:\s*S(\d+)/m.exec(sub.body || ''); if (m) maxStep = Math.max(maxStep, Number(m[1])); }
+        if (subs.length < 100) break;
+      }
+      const step = `S${maxStep + 1}`;
       const labels = ['orch:item']; if (opt.you) labels.push('orch:you');
-      const args = { goal: gn, lane, title: text.slice(0, 120), text, body: bodyOf(text, { outcome: str('outcome'), gate: str('gate') }), labels,
+      const args = { goal: gn, lane, title: text.slice(0, 120), text, body: bodyOf(text, { step, outcome: str('outcome'), gate: str('gate'), accept, recipe }), labels,
         milestoneNumber: g.milestone ? g.milestone.number : null, bucket, pipeline, feature,
         assignee: opt.you ? gh.rest('GET', 'user').login : null };
       const issue = runAction('add-item', lane, args);

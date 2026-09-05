@@ -80,7 +80,7 @@ const GOALS = { repository: { issues: { nodes: [
   check('read exits 0', r.code === 0);
   const g142 = j.goals.find(g => g.lane === 'G142'), g99 = j.goals.find(g => g.lane === 'G99');
   check('goal G142 in milestone 49 folds running', g142.milestone.number === 49 && g142.status === 'running' && g142.brief.startsWith('BRIEF'));
-  check('items carry bucket(Priority)/pipeline/outcome/gate/you', g142.items[0].bucket === 'Now' && g142.items[0].pipeline === 'Engine' && g142.items[0].outcome === 'canonical home' && g142.items[1].bucket === 'Next' && g142.items[1].gate === 'GATE LIVE' && g142.items[2].you === true);
+  check('items carry bucket(Priority)/pipeline/outcome/gate/you', g142.items[0].bucket === 'Now' && g142.items[0].pipeline === 'Engine' && g142.items[0].outcome === 'canonical home' && g142.items[1].bucket === 'Next' && g142.items[1].gate === 'GATE LIVE' && g142.items[2].you === true && g142.items[0].step === 'S1' && g142.items[2].step === 'S3' && g142.items[0].accept === 'grammar test names the file' && g142.items[0].recipe === 'tdd');
   check('unset Priority → first bucket', g142.items[2].bucket === 'Now');
   check('closed goal folds merged, null milestone sorts last', g99.status === 'merged' && g99.milestone === null && j.goals[j.goals.length - 1].lane === 'G99');
   check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
@@ -375,6 +375,36 @@ writeCfg(CFG);
   check('add-milestone finds an existing milestone on page 2', r.code === 0 && /exists: #300/.test(r.out) && st.milestones.length === before);
   r = run(['close-milestone', '300', '--summary', 'x'], gh);
   check('close-milestone finds its target on page 2 (refuses for zero goals, not "no open milestone")', r.code === 1 && /has no goals/.test(r.out) && !/no open milestone/.test(r.out));
+}
+// --- accept: / recipe: ----------------------------------------------------------
+{
+  const { parseBody, bodyOf, RECIPES, EXEC_RECIPES } = require('../scripts/board-gh');
+  check('RECIPES is the seven-name list', RECIPES.join() === 'spec,tdd,iterate,debug,research,cleanup,fast');
+  check('EXEC_RECIPES is the execution group', EXEC_RECIPES.join() === 'tdd,iterate,debug,cleanup,fast');
+  const body = bodyOf('wire the gate', { step: 'S2', outcome: 'gate wired', gate: 'GATE LIVE', accept: 'test-grammar passes', recipe: 'tdd' });
+  check('bodyOf orders step, outcome, gate, accept, recipe, mark last', body === 'wire the gate\n\nstep: S2\noutcome: gate wired\ngate: GATE LIVE\naccept: test-grammar passes\nrecipe: tdd\n<!-- orch-item -->');
+  const p = parseBody(body + '\n<!-- opId:x -->');
+  check('parseBody reads step, accept and recipe', p.step === 'S2' && p.accept === 'test-grammar passes' && p.recipe === 'tdd' && p.gate === 'GATE LIVE');
+  check('legacy body → null step/accept/recipe', parseBody('old\n\noutcome: y\n<!-- orch-item -->').step === null && parseBody('old').recipe === null);
+  const { st, gh } = ghStore();
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  let r = run(['add-item', 'G140', 'wire the gate', '--accept', 'test-grammar passes', '--recipe', 'tdd'], gh);
+  const n = Number(r.out.trim());
+  check('add-item assigns step: S1 and writes accept:/recipe:', r.code === 0 && /\nstep: S1\n/.test(st.issues[n].body) && /\naccept: test-grammar passes\nrecipe: tdd\n<!-- opId:/.test(st.issues[n].body));
+  r = run(['add-item', 'G140', 'second'], gh);
+  check('next add-item gets S2', /\nstep: S2\n/.test(st.issues[Number(r.out.trim())].body));
+  run(['done', String(n)], gh);
+  r = run(['add-item', 'G140', 'third'], gh);
+  check('step numbers are never reused (S3 after S1 closed)', /\nstep: S3\n/.test(st.issues[Number(r.out.trim())].body));
+  for (let i = 0; i < 45; i++) run(['add-item', 'G140', 'bulk ' + i], gh); // past the 40-item read window
+  r = run(['add-item', 'G140', 'forty-ninth'], gh);
+  check('step allocation pages all sub-issues, not the 40-item read window', /\nstep: S49\n/.test(st.issues[Number(r.out.trim())].body));
+  r = run(['add-item', 'G140', 'x', '--recipe', 'yolo'], gh);
+  check('add-item rejects an unknown recipe', r.code === 1 && /recipe must be one of tdd \| iterate/.test(r.out));
+  r = run(['add-item', 'G140', 'x', '--recipe', 'spec'], gh);
+  check('add-item rejects a shaping recipe on a step', r.code === 1 && /recipe must be one of tdd \| iterate/.test(r.out) && !Object.values(st.issues).some(i => /recipe: spec/.test(i.body)));
+  r = run(['add-item', 'G140', 'x', '--recipe'], gh);
+  check('bare --recipe is refused', r.code === 1 && /--recipe requires a value/.test(r.out));
 }
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();
