@@ -14,6 +14,7 @@ const loop = R('skills/go/loop.md');
 const renderer = R('scripts/board-html.js');
 const milestone = R('skills/milestone/SKILL.md'); const setup = R('skills/setup/SKILL.md');
 const readme = R('README.md');
+const delegate = R('skills/go/delegate.md');
 
 let pass = 0, fail = 0, n = 0;
 function check(name, cond) {
@@ -92,6 +93,40 @@ check('setup runs sync-features after a domain edit', setup.includes('sync-featu
 
 // 9. Five commands, stated once in README.
 check('README lists five commands', readme.includes('/orch:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
+
+// 10. Recipes — one page each in skills/go/recipes/; stages and rubric adds verbatim from spec §8.
+const { RECIPES } = require('../scripts/board-gh');
+const RECIPE_DIR = path.join(__dirname, '..', 'skills', 'go', 'recipes');
+const STAGE_LINES = {
+  spec: 'Stages: brainstorm/grill → spec → `P.R1` → steps',
+  research: 'Stages: search → grade sources → findings note',
+  tdd: 'Stages: red at the seam → green → refactor',
+  debug: 'Stages: reproduce → hypothesis → bisect → fix → regression test',
+  iterate: 'Stages: hypothesis first → change → measure → keep/revert',
+  cleanup: 'Stages: separate pass, separate agent',
+  fast: 'Stages: implement → test',
+};
+const RUBRIC_ADDS = {
+  spec: '- plan covers `done:`; each `accept:` checkable',
+  research: '- sources cited and graded; no code',
+  tdd: '- green-can-go-red',
+  debug: '- a test that was red before the fix; root cause named',
+  iterate: '- delta outside the noise band; `⚠complexity` weighed',
+  cleanup: '- tests unchanged and green; the diff deletes',
+  fast: '- mechanical step only',
+};
+check('recipe pages = RECIPES + review-goal, nothing else', fs.readdirSync(RECIPE_DIR).sort().join() === [...RECIPES, 'review-goal'].map(x => `${x}.md`).sort().join());
+for (const name of RECIPES) {
+  const t = R(`skills/go/recipes/${name}.md`);
+  check(`recipe ${name} is one page (≤45 lines)`, t.split('\n').length <= 45);
+  check(`recipe ${name} states its stages verbatim`, t.includes(STAGE_LINES[name]));
+  check(`recipe ${name} carries the §8 gate rubric adds`, /^## Gate rubric adds$/m.test(t) && t.includes(RUBRIC_ADDS[name]));
+  check(`recipe ${name} names its skill stage ledger line`, t.includes('skill: ' + (name === 'spec' ? 'grill' : name) + '='));
+}
+check('shaping recipes say they never go on a step', R('skills/go/recipes/spec.md').includes('never on a step') && R('skills/go/recipes/research.md').includes('never on a step'));
+const rg = R('skills/go/recipes/review-goal.md');
+check('review-goal is one page with the tri-state verdict grammar', rg.split('\n').length <= 45 && rg.includes('verdict: pass | fail | inconclusive'));
+check('review-goal is read-only, runs tests, fixes nothing', rg.includes('git show <sha>:<path>') && rg.includes('EXISTS → SUBSTANTIVE → WIRED') && rg.includes('You fix nothing you find.'));
 
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
