@@ -154,5 +154,8 @@ check('delegate brief MUST DO opens with the recipe stages', delegate.includes("
 check('go route names the execution recipes once', go.includes('the step\'s `recipe:`') && go.includes('recipes/'));
 check('board gathers the tools check and renders the TOOLS line', board.includes('tools.js" check') && board.includes('TOOLS: <stage> <name>@<pin> missing|mismatch → native'));
 
+// 13. README states recipes and stage routing once.
+check('README glossary has recipe and stage; setup row mentions workflow.tools', readme.includes('**recipe**') && readme.includes('**stage**') && readme.includes('workflow.tools'));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

@@ -15,11 +15,14 @@
 - `init` seeds Feature from contract domain names (non-adopt only); journaled `sync-features` keeps it mirrored; `/orch:setup` runs it after a domain edit.
 - Replay skips Director-only pending actions inside a roled pane.
 - Bare value-taking options (`--brief`, `--bucket`, `--recipe`, …) are refused.
+- Recipes: `skills/go/recipes/{spec,research,tdd,debug,iterate,cleanup,fast}.md` — one page each with stages and "Gate rubric adds" (spec §8); `review-goal.md` is the base gate rubric. These are the rubric files the review manifest hashes.
+- Skill routing (spec §9, d.32): `workflow.tools` maps a stage key to one chosen skill `name@version` or `null`; `scripts/tools.js list|check|pin` resolves against `~/.claude/skills`, `~/.agents/skills` and installed plugins, reports `ok|missing|mismatch|native` with the invoke mode (`skill` vs `read` for `disable-model-invocation` skills), and refuses to pin `to-spec`/`to-tickets`/`wayfinder` unless `docs/agents/issue-tracker.md` is the local-markdown tracker. `/orch:setup` fills and pins the map (`find-skills` offered when installed, native first); `/orch:go` invokes the step's recipe and resolved skill and writes `skill: <stage>=<name>` to the ledger; `/orch:board` lists stages whose pin no longer matches.
 
 ### Changed
 - Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
 - Goals sort Priority-first across milestones, then milestone, then issue; read goals carry `bucket` and `feature`. `/orch:go` picks the focus goal by that order (recency rule retired).
 - `init` no longer seeds Pipeline from contract domains (absent → `general`).
+- The goal skill's shaping table and setup's `workflow.tools` defaults no longer name superpowers; orch routes only through `workflow.tools` stages and its own native fallbacks.
 
 ### Removed
 - `docs/BOARD.md` as a board store. `/orch:setup` deletes it; nothing is imported.

@@ -61,7 +61,7 @@ One file, `.claude/orch.json`, at your repo root:
 
 | Command | When | What |
 |---|---|---|
-| 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, ratifies ADRs |
+| 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, pins `workflow.tools` (one skill per stage of work, native fallback otherwise), ratifies ADRs |
 | 🏁 `/orch:milestone` | scope, Director only | `define` (three questions → `M<n> · <objective>` with `target:` and `done:`), `split` (proposes goals from the Feature options, creates nothing), `prioritize` (`move G<n> …`), `close` (all goals merged, summary acknowledged). Refuses in any pane with `ORCH_ROLE` — a guardrail, not a credential. |
 | 🎯 `/orch:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
 | 🚦 `/orch:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says |
@@ -132,7 +132,7 @@ clause** moved less than the usual wobble = not an improvement (statistical
 significance) · **guardrails** rules enforced by programs, not by asking
 nicely (policy-as-code) · **contract** your map of who decides and who
 ships (decision rights / RACI) · **ADR** architecture decision record ·
-**ship grant** how far the AI may push on its own (deploy permission).
+**ship grant** how far the AI may push on its own (deploy permission) · **recipe** the named stage sequence between a step's brief and its gate — `tdd · debug · iterate · cleanup · fast` on steps, `spec · research` for shaping; one page each under `skills/go/recipes/`, hashed into the review manifest · **stage** one named phase of a recipe; `workflow.tools` maps a stage to one chosen skill pinned by version (`tdd@<sha12>`, `to-spec@2.1.0`), orch's native fallback otherwise — data, never read by a hook.
 
 **Renamed in v0.4.0** (if you saw the earlier version): front → goal ·
 dossier → worklog · hook wall → guardrails · judge independence → independent
