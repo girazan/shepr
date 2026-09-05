@@ -13,6 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { readStdin, loadConfig } = require('./lib/config');
+const { countEdits } = require('./lib/transcript');
 
 const { j } = readStdin();
 if (!j) process.exit(0);
@@ -23,22 +24,7 @@ const trails = cfg.trailPaths || [];
 if (!trails.length) process.exit(0);
 const minEdits = cfg.minEdits || 8;
 
-// Count real Edit/Write tool_use blocks by parsing the JSONL, not by
-// regexing raw text — raw matching also counted rejected calls and broke
-// on transcript-format drift. Unparseable lines are skipped (fail-open).
-let edits = 0;
-try {
-  for (const line of fs.readFileSync(j.transcript_path, 'utf8').split('\n')) {
-    if (!line.includes('tool_use')) continue;
-    try {
-      const content = (JSON.parse(line).message || {}).content;
-      if (!Array.isArray(content)) continue;
-      for (const c of content) {
-        if (c && c.type === 'tool_use' && /^(Edit|Write)$/.test(c.name)) edits++;
-      }
-    } catch { /* not JSON or unexpected shape — skip the line */ }
-  }
-} catch { process.exit(0); }
+const edits = countEdits(j.transcript_path);
 if (edits < minEdits) process.exit(0);
 
 const today = new Date().toDateString();
