@@ -104,9 +104,10 @@ here; if wording ever differs, this section wins.
    domain facts, vendor specifics), run the research route (see
    /orch:goal's shaping table) BEFORE writing the ROUTE line; cite its
    findings note in the worklog.
-3. Execution shape: number+cause-unknown → measurement-first iteration ·
-   mechanical/spec-complete → cheapest tier, single review ·
-   judgment-heavy/high-consequence → mid-tier implement (the review count comes from the contract's `review:` flag, never from here).
+3. Execution shape follows the step's `recipe:` (written at creation by
+   the goal skill or the Architect; one page each under `recipes/`):
+   `iterate` → measurement-first · `fast` → cheapest tier ·
+   `tdd`/`debug`/`cleanup` → mid tier (the review count comes from the contract's `review:` flag, never from here).
    Tier + delegation vehicle come from `delegate.md` (load it here).
 4. `decide: human` → present plan ≤5 lines, STOP; write the ROUTE line
    only on approval, with `approved:operator`. `decide: ai` → write it

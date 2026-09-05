@@ -32,6 +32,9 @@ READ-ONLY. Never route, never delegate, never edit a file. Two announced excepti
 5. Proposed ADRs in `docs/adr/` with ages.
 6. Missing sources render as `—` with a one-word reason (`pre-install`,
    `no worklog`) — never fabricate, never omit the row.
+7. Tools: `node "<plugin>/scripts/tools.js" check` — every line that says
+   `missing` or `mismatch` is a stage running on its native fallback;
+   collect them for the footer.
 
 ## Render (ASCII, in chat)
 
@@ -53,9 +56,11 @@ under a one-line milestone header, YOU last and visually distinct, gates
      GATES: <from ## GATES or the board's rules line>
      ADRs: <NNNN proposed Nd ⚠ …> | GATE DIGEST where goal-level
      TODAY'S QUEUE: <current session order, from NOW items + parks>
+     TOOLS: <stage> <name>@<pin> missing|mismatch → native
 
 Done items keep their place with ✓ — the map read left-to-right IS the
 history. Buckets are the Project's `Priority` options — never invent one.
+The `TOOLS:` line appears only when a pin is missing or mismatched; every pin holding → no line.
 
 ## `/orch:board html`
 

@@ -143,5 +143,16 @@ check('goal says shaping recipes never go on a step', goal.includes('Shaping rec
 check('milestone define routes through the define-milestone stage', milestone.includes('`define-milestone`') && milestone.includes('tools.js" check'));
 check('orch never routes to superpowers', ![goal, setup, milestone, go, work].some(t => /superpowers:/.test(t)));
 
+// 12. Work phase — recipe and skill per step; ledger line canonical in work.md; board lists broken pins.
+const SKILL_LINE = 'skill: <stage>=<name>';
+check('work states the skill ledger line', work.includes(SKILL_LINE));
+check('no other skill restates the skill ledger line', ![go, goal, board, loop, setup, milestone, delegate].some(t => t.includes(SKILL_LINE)));
+check('work loads the step recipe page and runs the tools check before dispatch', work.includes('recipes/<recipe>.md') && work.includes('tools.js" check') && work.includes('items[].recipe'));
+check('work says how to invoke: skill vs read', work.includes('invoke: read') && work.includes('invoke: skill'));
+check('work falls back per stage and says so', work.includes('missing') && work.includes('mismatch') && work.includes('native fallback'));
+check('delegate brief MUST DO opens with the recipe stages', delegate.includes("MUST DO:   <the step's recipe stages first, in order (recipes/<recipe>.md), then the constraints that are non-negotiable>"));
+check('go route names the execution recipes once', go.includes('the step\'s `recipe:`') && go.includes('recipes/'));
+check('board gathers the tools check and renders the TOOLS line', board.includes('tools.js" check') && board.includes('TOOLS: <stage> <name>@<pin> missing|mismatch → native'));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
