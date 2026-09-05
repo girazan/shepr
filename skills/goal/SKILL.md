@@ -25,16 +25,16 @@ lands in this exact format at the top of the goal's worklog
     feature: <primary domain — the Project's Feature options are the contract domains; add-goal reads this line>
     kill:    <when to stop pouring effort in>
 
-## Shaping route (operator's named tool always wins)
+## Shaping route (a recipe per shape; the skill per stage comes from `workflow.tools`)
 
-| Shape | Tool |
+| Shape | Recipe |
 |---|---|
-| fuzzy / new ground | superpowers:brainstorming if installed, else the 3 questions below |
-| clear + big | superpowers:writing-plans if installed, else a plan section in the worklog |
-| clear + small | no shaping — write the BRIEF directly |
-| knowledge gap | `workflow.tools.research` if configured (deep-research tool); else native: web search → grade sources → findings note |
+| fuzzy / new ground | `spec` — `recipes/spec.md` in the go skill: stages `grill` → `spec` → `split` (+ `fog` when big) |
+| clear + big | `spec` from its `split` stage — the BRIEF is clear, the steps are not |
+| clear + small | no shaping — write the BRIEF directly; the single step's `--recipe` is `fast` (`debug` for a bug) |
+| knowledge gap | `research` — `recipes/research.md`, stage `research`, before the BRIEF |
 
-`workflow.tools` in `.claude/orch.json` overrides the defaults.
+Run `node "<plugin>/scripts/tools.js" check` once: each stage line names the chosen skill (Skill tool when `invoke: skill`; when `invoke: read`, read the printed SKILL.md and follow it) or the native fallback — the three questions below for `grill`, a plan section in the worklog for `spec`/`split`. Shaping recipes never go on a step.
 
 **Research route (optional):** before writing the BRIEF ask — does this
 goal depend on facts the AI can neither derive from the repo nor verify

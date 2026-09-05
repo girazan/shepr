@@ -50,7 +50,7 @@ a consultant — take its output as material, never as a verdict.
     ASK:       <the operator's words, verbatim — paraphrase inherits your misreadings>
     OUTCOME:   <what done looks like — artifact, diff shape, or number>
     TOOLS:     <what it may use; what it may NOT touch>
-    MUST DO:   <ordered steps or constraints that are non-negotiable>
+    MUST DO:   <the step's recipe stages first, in order (recipes/<recipe>.md), then the constraints that are non-negotiable>
     MUST NOT:  <the boundaries — protected dirs, contract reserves, scope>
     VETOES:    <every operator correction this session, quoted — context decays; vetoes must not>
     CONTEXT:   <worklog path + everything it needs; it inherits nothing>

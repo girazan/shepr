@@ -7,6 +7,16 @@ the fix it proposes. Never delegated: protected-directory edits, authored
 values without a cited source, judgment the contract reserves for the
 operator.
 
+## Recipe and skill — before every dispatch of a step
+
+1. The step's recipe: `read --json` → `items[].recipe` (a legacy item with none runs `fast`; say so in the brief). Load `recipes/<recipe>.md` from this skill's directory — the seven pages are the only recipes; a step never carries `spec` or `research`.
+2. `node "<plugin>/scripts/tools.js" check` — one line per stage. `ok · invoke: skill` → the Dev calls that skill through the Skill tool at that stage; `ok · invoke: read` → the Dev reads the printed SKILL.md and follows it (its frontmatter forbids model invocation); `missing` or `mismatch` or `native` → the native fallback named on the line, and the brief says which. A stage the recipe does not use is ignored.
+3. The brief (`delegate.md`): MUST DO opens with the recipe's stages in order, each stage naming the skill or the native fallback it resolved to; CONTEXT names the recipe page and this goal's worklog.
+4. Ledger, one line per stage used, appended by the Dev when the stage starts:
+   `skill: <stage>=<name>`
+   (`<name>` = the skill name, or `native`). The ROUTE line is unchanged.
+5. The recipe page's "Gate rubric adds" is the reviewer's rubric beside `recipes/review-goal.md` — the review ladder's step 2 reads both; plan 4's `orch review` hashes both into the manifest.
+
 ## Review ladder (per hand-back — order is mandatory)
 
 1. MECHANICAL first, cheap tier: empty-result check before anything — if

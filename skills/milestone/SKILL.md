@@ -25,8 +25,7 @@ Any number of milestones may be open at once; each goal attaches to one.
 
 ## define
 
-Three questions, one at a time (skill: superpowers:brainstorming or
-mattpocock grilling if installed, else ask plainly):
+Three questions, one at a time (stage `define-milestone`: `node "<plugin>/scripts/tools.js" check` names the skill — `grilling` when pinned — else ask plainly):
 
 1. The objective in one line — what is true when this is done?
 2. The target date.

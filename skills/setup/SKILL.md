@@ -60,8 +60,7 @@ without them.
    unlocked models map could remap `"high"` to a cheap model and hollow
    out every floor). A corrupt lock file now fails blocking guards CLOSED
    until fixed.
-6. Offer `workflow.tools` (defaults: fuzzy → superpowers:brainstorming,
-   big → superpowers:writing-plans; native fallbacks otherwise).
+6. Workflow tools — load `tools.md` and run the section below.
 
 ## Editing an existing contract
 
@@ -70,6 +69,16 @@ Show current domains as a table. Apply the approved change; bump
 context: what changed, why). If the contract is lock-mirrored, update the
 lock copy too, under `repos[<this repo's git-common-dir>]` (not the lock's
 top level) — the operator applies that edit (it is their file). If the board is on GitHub (`.orch/board.json` exists), run `node "<plugin>/scripts/board-gh.js" sync-features` so the Project's Feature options gain any new or renamed domain name (options are never removed; report a renamed domain's old option to the operator).
+
+## Workflow tools (stage → one chosen skill)
+
+`tools.md` is the table; this is the procedure. Nothing here is mirrored
+into the lock — no hook reads `workflow.tools`.
+
+1. `node "<plugin>/scripts/tools.js" list` — every stage with its native fallback (orch's own, always available), the recommended skill and whether it is installed. Show it native first: the operator may leave any stage `native`.
+2. If `find-skills` is installed (`~/.agents/skills/find-skills/SKILL.md` exists), offer `npx skills find <stage>` for any stage the operator wants a different skill for; otherwise offer only what `list` shows. One skill per stage, never a list.
+3. If any of `to-spec`, `to-tickets`, `wayfinder` is chosen, `docs/agents/issue-tracker.md` must carry the line `# Issue tracker: Local Markdown` — `pin` refuses otherwise. Tell the operator to run `/setup-matt-pocock-skills` and choose local markdown (files under `.scratch/`, gitignored); pointing that tracker at GitHub is a misconfiguration, because `board-gh` is the only board writer.
+4. `node "<plugin>/scripts/tools.js" pin <stage>=<skill|native> … --write` — pins each choice as `<skill>@<version>` into `.claude/orch.json` → `workflow.tools`. Show the printed map. Re-run after `npx skills update` or a plugin update: a changed version is a `mismatch` (that stage runs native) until re-pinned; `/orch:board` lists such stages.
 
 ## Migrating a v1 contract to schema 2
 
