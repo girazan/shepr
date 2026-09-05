@@ -161,28 +161,49 @@ if (loadLock().corrupt) {
   process.exit(2);
 }
 
-// board-gh close-goal (spec §4.1 "Evidence-before-done" / §2.3 at v0.10):
-// evidence must already be committed — a ledger line naming the goal in
-// that goal's worklog AT HEAD. Git only; no network.
+// board-gh close-goal / done --goal --step — the §5 evidence lint. Judged on
+// repo state at HEAD plus the locked contract: git only, no network. With
+// no lock entry for this repo the lint is ADVISORY (audit line, no block —
+// spec §6 last row); today's close-goal ledger check stays and runs first.
 const CG = cmd.match(/board-gh(?:\.js)?\s+close-goal\s+(G\d+)\b/i);
-if (CG) {
-  const lane = CG[1].toUpperCase();
-  const cwd0 = (j && j.cwd) || process.cwd();
+const DN = !CG && cmd.match(/board-gh(?:\.js)?\s+done\b([^;&|]*)/i);
+if (CG || DN) {
   let root0 = null;
-  try { root0 = git(cwd0, ['rev-parse', '--show-toplevel']).trim(); } catch {}
-  const cfg0 = loadConfig({ cwd: root0 || cwd0 });
+  try { root0 = git(cwd, ['rev-parse', '--show-toplevel']).trim(); } catch {}
+  const cfg0 = loadConfig({ cwd: root0 || cwd });
   const active = cfg0.contract && cfg0.contract.domains && Object.keys(cfg0.contract.domains).length;
   if (active && root0) {
-    const block = reason => { appendAudit(root0, { action: 'close-goal', lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
-    let files = [];
-    try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
-    const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
-    if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
-    let text = '';
-    try { text = git(root0, ['show', `HEAD:${wl}`]); }
-    catch { block(`close-goal: cannot read ${wl} at HEAD`); }
-    if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text)) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
-    appendAudit(root0, { action: 'close-goal', lane, verdict: 'ALLOW', by: 'hook' });
+    let verb, lane;
+    if (CG) { lane = CG[1].toUpperCase(); verb = { kind: 'close', goal: Number(lane.slice(1)) }; }
+    else {
+      const rest = DN[1];
+      const gm = /--goal\s+G(\d+)\b/i.exec(rest), sm = /--step\s+S(\d+)\b/i.exec(rest);
+      const im = /(?:^|\s)(\d+)(?=\s|$)/.exec(rest.replace(/--goal\s+\S+|--step\s+\S+/gi, ' '));
+      if (!gm || !sm || !im) {
+        appendAudit(root0, { action: 'done', verdict: 'BLOCK', reason: 'done: --goal G<n> --step S<j> <item#> required', by: 'hook' });
+        console.error('BLOCKED (orch ship-gate): use `board-gh done --goal G<n> --step S<j> <item#>` — the hook cannot map an item number to ids offline (spec §5).');
+        process.exit(2);
+      }
+      lane = `G${gm[1]}`; verb = { kind: 'done', goal: Number(gm[1]), step: Number(sm[1]), item: Number(im[1]) };
+    }
+    const action = CG ? 'close-goal' : 'done';
+    const block = reason => { appendAudit(root0, { action, lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
+    if (CG) {
+      let files = [];
+      try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
+      const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
+      if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
+      let text = '';
+      try { text = git(root0, ['show', `HEAD:${wl}`]); }
+      catch { block(`close-goal: cannot read ${wl} at HEAD`); }
+      if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text)) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
+    }
+    let res;
+    try { res = lint({ git: args => git(root0, args), contract: cfg0.contract, models: cfg0.models || {}, verb }); }
+    catch (e) { res = { ok: false, miss: `lint error: ${String(e.message).split('\n')[0]}` }; }
+    if (res.ok) appendAudit(root0, { action, lane, verdict: 'ALLOW', lint: 'PASS', target: res.target, by: 'hook' });
+    else if (cfg0.__repoLocked) block(`${action}: evidence lint MISS ${res.miss}`);
+    else appendAudit(root0, { action, lane, verdict: 'ALLOW', lint: 'ADVISORY', reason: res.miss, by: 'hook' });
   }
 }
 
