@@ -86,6 +86,19 @@ const GOALS = { repository: { issues: { nodes: [
   check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
   check('--goal filters', JSON.parse(run(['read', '--json', '--goal', 'G99'], gh).out).goals.length === 1);
   check('buckets = Priority options in order', j.buckets.join() === 'Now,Next,Later');
+  check('goals sort Priority-first across milestones, then milestone, then issue', j.goals.map(g => g.lane).join() === 'G143,G142,G99');
+  check('goal carries bucket and feature', g142.bucket === 'Next' && g142.feature === 'hmi' && j.goals.find(g => g.lane === 'G143').feature === null);
+}
+{
+  const two = JSON.parse(JSON.stringify(GOALS));
+  two.repository.issues.nodes[0].milestone = { number: 60, title: 'M2 · later' }; // G142 (Next) moves to a higher milestone
+  two.repository.issues.nodes[1].milestone = { number: 49, title: 'C1 SHU-HDS operable' };
+  two.repository.issues.nodes[1].projectItems = pi('Todo', null, 'Next'); // G143 becomes Next too
+  const j = JSON.parse(run(['read', '--json'], fakeGh([[/subIssues/, () => two]])).out);
+  check('same bucket → lower milestone first', j.goals.map(g => g.lane).slice(0, 2).join() === 'G143,G142');
+  two.repository.issues.nodes[0].projectItems = pi('Todo', null, 'Now', 'hmi'); // G142 Now under M2 beats G143 Next under C1
+  const j2 = JSON.parse(run(['read', '--json'], fakeGh([[/subIssues/, () => two]])).out);
+  check('Now under a later milestone beats Next under an earlier one', j2.goals.map(g => g.lane).slice(0, 2).join() === 'G142,G143');
 }
 {
   const blocked = JSON.parse(JSON.stringify(GOALS));
@@ -156,6 +169,12 @@ writeCfg(CFG);
   check('--bucket Next → Priority option r2; --gate in body', st.fields['PI_I_' + n2 + ':F_R'] === 'r2' && /\ngate: GATE LIVE\n/.test(st.issues[n2].body) && !st.issues[n2].labels.some(l => l.name.startsWith('orch:bucket')));
   r = run(['add-item', 'G140', 'x', '--bucket', 'Someday'], gh);
   check('unknown bucket refused, lists valid options', r.code === 1 && /Now, Next, Later/.test(r.out));
+  r = run(['add-item', 'G140', 'x', '--bucket'], gh);
+  check('bare --bucket is refused', r.code === 1 && /--bucket requires a value/.test(r.out));
+  r = run(['add-goal', '49', 'y', '--brief'], gh);
+  check('bare --brief is refused', r.code === 1 && /--brief requires a value/.test(r.out));
+  r = run(['read', '--goal'], gh);
+  check('bare read --goal is refused', r.code === 1 && /--goal requires a value/.test(r.out));
   r = run(['move', String(n2), 'Later'], gh);
   check('move sets Priority only', r.code === 0 && st.fields['PI_I_' + n2 + ':F_R'] === 'r3' && !st.comments[n2]);
   run(['move', String(n2), 'Next'], gh);

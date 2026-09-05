@@ -84,8 +84,14 @@ function readBoard(gh, cfg) {
       blockerComment: i.labels.includes('orch:blocked') ? latestComment(gh, cfg, i.issue, 'blocked:') : null }));
     const { status, blocker } = foldStatus({ state: g.state.toLowerCase(), labels: g.labels.nodes.map(l => l.name) }, forFold);
     return { lane: `G${g.number}`, issue: g.number, name: g.title, milestone: g.milestone ? { number: g.milestone.number, title: g.milestone.title } : null,
+      bucket: fieldOf(g, cfg, 'Priority'), feature: fieldOf(g, cfg, 'Feature'),
       status, blocker, brief: stripOpId(g.body).join('\n'), updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
-  }).sort((a, b) => ((a.milestone ? a.milestone.number : Infinity) - (b.milestone ? b.milestone.number : Infinity)) || (a.issue - b.issue));
+  }).sort((a, b) => {
+    // Spec §4 one rule: Priority bucket across milestones (unset last) → milestone (none last) → issue.
+    const bi = x => (x.bucket ? cfg.buckets.indexOf(x.bucket) : cfg.buckets.length);
+    const mi = x => (x.milestone ? x.milestone.number : Infinity);
+    return (bi(a) - bi(b)) || (mi(a) - mi(b)) || (a.issue - b.issue);
+  });
   return { goals, buckets: cfg.buckets };
 }
 
@@ -118,6 +124,7 @@ function main(argv, deps = {}) {
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
   if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
+  if (opt.goal === true) { stdout('board-gh: --goal requires a value\n'); return 1; }
   if (verb === 'read') {
     const b = readBoard(gh, cfg);
     if (opt.goal) b.goals = b.goals.filter(g => g.lane === String(opt.goal).toUpperCase());

@@ -49,6 +49,8 @@ function createSelect(gh, project, name, opts, say, dry) {
 function init({ opt, cwd, gh, stdout }) {
   const dry = !!opt['dry-run'];
   const say = s => stdout(s + '\n');
+  if (opt.project === true) { say('init: --project requires a value'); return 1; }
+  if (opt.owner === true) { say('init: --owner requires a value'); return 1; }
   const { owner: repoOwner, repo } = remoteRepo(cwd);
   const owner = typeof opt.owner === 'string' ? opt.owner : repoOwner;
   const title = `${repo} · orch board`;

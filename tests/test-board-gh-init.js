@@ -127,5 +127,9 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   check('dry-run detects empty Priority field', r.code === 1 && /no options/.test(r.out));
   check('dry-run with empty Priority writes no config', !fs.existsSync(CFGP));
 }
+{
+  const r = run(['init', '--project'], fakeGh({ projects: [], fields: [], labels: [] }));
+  check('bare init --project is refused', r.code === 1 && /--project requires a value/.test(r.out));
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

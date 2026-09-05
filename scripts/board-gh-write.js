@@ -16,6 +16,8 @@ const path = require('path');
 function write(ctx) {
   const { verb, pos, opt, cfg, gh, stdout, commonDir, readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto } = ctx;
   const say = s => stdout(s + '\n');
+  // parseArgs stores a bare `--flag` as true; every value-taking option must reject that.
+  const str = name => { const v = opt[name]; if (v === true) throw new Error(`--${name} requires a value`); return typeof v === 'string' ? v : null; };
   const lockCfg = ctx.lockCfg || require('../hooks/lib/config').loadConfig({ cwd: ctx.cwd || process.cwd() });
   if (lockCfg.__repoLocked && !(lockCfg.board && lockCfg.board.github === true)) {
     say('board-gh: this repo is locked and board.github is not enabled in ~/.claude/orch-lock.json — /orch:setup enables it.'); return 1;
@@ -196,7 +198,8 @@ function write(ctx) {
   const VERBS = {
     'add-goal'() {
       const [ms, name] = pos;
-      if (!ms || !name || typeof opt.brief !== 'string') throw new Error('usage: add-goal <milestone#|backlog|none> "<name>" --brief <file>');
+      const brief = str('brief');
+      if (!ms || !name || !brief) throw new Error('usage: add-goal <milestone#|backlog|none> "<name>" --brief <file>');
       let milestoneNumber = null;
       if (ms !== 'none') {
         const all = gh.rest('GET', `${R}/milestones?state=open&per_page=100`) || [];
@@ -204,7 +207,7 @@ function write(ctx) {
         if (!m) { say(`add-goal: no open milestone "${ms}" — run \`board-gh milestones\``); return 1; }
         milestoneNumber = m.number;
       }
-      const body = fs.readFileSync(opt.brief, 'utf8');
+      const body = fs.readFileSync(brief, 'utf8');
       const issue = runAction('add-goal', 'G?', { name, body, milestoneNumber });
       say(`G${issue}`);
     },
@@ -212,13 +215,13 @@ function write(ctx) {
       const gn = laneOf(pos[0]); const text = pos[1];
       if (!gn || !text) throw new Error('usage: add-item G<n> "<text>" [--you] [--bucket <Priority option>] [--pipeline <opt>] [--feature <opt>] [--outcome …] [--gate LABEL]');
       const g = goal(gn); const lane = g.lane;
-      const bucket = typeof opt.bucket === 'string' ? opt.bucket : cfg.buckets[0];
+      const bucket = str('bucket') || cfg.buckets[0]; const pipeline = str('pipeline');
       optionId('priority', bucket); // validate before any write
-      if (typeof opt.pipeline === 'string') optionId('pipeline', opt.pipeline);
-      if (typeof opt.feature === 'string') optionId('feature', opt.feature);
+      if (pipeline) optionId('pipeline', pipeline);
+      const feature = str('feature'); if (feature) optionId('feature', feature);
       const labels = ['orch:item']; if (opt.you) labels.push('orch:you');
-      const args = { goal: gn, lane, title: text.slice(0, 120), text, body: bodyOf(text, { outcome: opt.outcome, gate: opt.gate }), labels,
-        milestoneNumber: g.milestone ? g.milestone.number : null, bucket, pipeline: typeof opt.pipeline === 'string' ? opt.pipeline : null, feature: typeof opt.feature === 'string' ? opt.feature : null,
+      const args = { goal: gn, lane, title: text.slice(0, 120), text, body: bodyOf(text, { outcome: str('outcome'), gate: str('gate') }), labels,
+        milestoneNumber: g.milestone ? g.milestone.number : null, bucket, pipeline, feature,
         assignee: opt.you ? gh.rest('GET', 'user').login : null };
       const issue = runAction('add-item', lane, args);
       say(String(issue));
@@ -234,9 +237,10 @@ function write(ctx) {
     },
     'set-blocker'() {
       const n = Number(pos[0]); const text = pos[1];
-      if (!text || typeof opt.owner !== 'string') throw new Error('usage: set-blocker <issue#> "<text>" --owner <who>');
+      const owner = str('owner');
+      if (!text || !owner) throw new Error('usage: set-blocker <issue#> "<text>" --owner <who>');
       const { g } = findItem(n);
-      runAction('set-blocker', g.lane, { issue: n, lane: g.lane, text, owner: opt.owner });
+      runAction('set-blocker', g.lane, { issue: n, lane: g.lane, text, owner });
     },
     'clear-blocker'() { const n = Number(pos[0]); const { g } = findItem(n); runAction('clear-blocker', g.lane, { issue: n, lane: g.lane }); },
     attention() {
@@ -254,11 +258,12 @@ function write(ctx) {
     done() { const n = Number(pos[0]); const { g } = findItem(n); runAction('done', g.lane, { issue: n, lane: g.lane }); },
     'close-goal'() {
       const gn = laneOf(pos[0]); if (!gn) throw new Error('usage: close-goal G<n> --evidence "<ledger line or artifact path>"');
-      if (typeof opt.evidence !== 'string' || !opt.evidence.trim()) { say(`close-goal: --evidence required (ledger line or artifact path naming G${gn})`); return 1; }
+      const evidence = str('evidence');
+      if (!evidence || !evidence.trim()) { say(`close-goal: --evidence required (ledger line or artifact path naming G${gn})`); return 1; }
       const g = goal(gn);
       const open = g.items.filter(i => !i.done);
       if (open.length) { say(`close-goal: ${g.lane} has ${open.length} open item(s): ${open.map(i => '#' + i.issue).join(' ')}`); return 1; }
-      runAction('close-goal', g.lane, { issue: gn, lane: g.lane, evidence: opt.evidence.trim() });
+      runAction('close-goal', g.lane, { issue: gn, lane: g.lane, evidence: evidence.trim() });
       say(`${g.lane} merged`);
     },
   };
