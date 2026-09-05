@@ -56,7 +56,7 @@ goal. Goal status is never written — it is folded from the items:
 `ready`. Change it by changing items: `set-status <issue#>
 <Todo|In progress|In review|Done>`, `set-blocker <issue#> "<why>"
 --owner <who>`, `clear-blocker`, `attention G<n> [--clear] "<why>"`,
-`done <issue#>`; reschedule with
+`done --goal G<n> --step S<j> <item#>`; reschedule with
 `move <issue#> Now|Next|Later` (the Project's `Priority` field — the
 board's columns). Every verb fails the step if GitHub is unreachable —
 say so, never pretend.
@@ -135,8 +135,10 @@ recorded.
    `commit`/`push` → run exactly the granted action; the ship-gate hook
    verifies independently — if it blocks, re-read the contract, never
    retry variants.
-3. Board: evidence-before-done — `done <issue#>` for each completed
-   item; append the ledger line to the worklog and COMMIT it; then
+3. Board: evidence-before-done — `done --goal G<n> --step S<j> <item#>`
+   for each step whose round manifest says `pass` (work.md "Gate
+   rounds"; the ship-gate evidence lint verifies the manifest chain at
+   HEAD); append the ledger line to the worklog and COMMIT it; then
    `close-goal G<n> --evidence "<that ledger line>"`. The script
    refuses while any item is open or without evidence; the ship-gate
    hook independently requires the ledger line in the worklog **at
