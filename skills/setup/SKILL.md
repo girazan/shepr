@@ -27,7 +27,7 @@ without them.
    advisory tier table in delegate.md. `review` is INSTRUCTED (applied by
    /orch:go at verdict time), `work` becomes hook-checked from v0.8.0.
    Record the WHY as `expertise` — future classification reads it to
-   break ties.
+   break ties. Ask whether verdicts in this domain need two independent reviewers; if yes write `review: "dual"` on the domain (the second comes from `models.review-alt`, which must then be set).
 3. Remind: omission never grants — unmatched work parks and proposes an
    amendment. Don't aim for total coverage on day one. (Classification
    semantics are canonical in /orch:go § The contract.)
@@ -42,7 +42,7 @@ without them.
    the `models` role map (`{"low": ..., "mid": ..., "high": ...,
    "frontier": ...}` — all four roles, model names as strings): floors
    are meaningless without it, and a LOCKED tiered contract without a
-   locked models map makes the v0.8.0 tier gate fail closed.
+   locked models map makes the v0.8.0 tier gate fail closed. If any domain is `review: "dual"`, ask for `models.review-alt` — a model from a different family than `review` — and do not write the lock until it is set.
 5. OFFER LOCK MIRRORING: the project file is agent-writable; mirroring
    `contract` into `~/.claude/orch-lock.json`, written under
    `repos[<this repo's git-common-dir>]` (never the lock's top level — a
@@ -69,7 +69,7 @@ Show current domains as a table. Apply the approved change; bump
 `contract.version` by 1; record the change as an accepted ADR (one-line
 context: what changed, why). If the contract is lock-mirrored, update the
 lock copy too, under `repos[<this repo's git-common-dir>]` (not the lock's
-top level) — the operator applies that edit (it is their file).
+top level) — the operator applies that edit (it is their file). If the board is on GitHub (`.orch/board.json` exists), run `node "<plugin>/scripts/board-gh.js" sync-features` so the Project's Feature options gain any new or renamed domain name (options are never removed; report a renamed domain's old option to the operator).
 
 ## Migrating a v1 contract to schema 2
 

@@ -22,7 +22,7 @@ usage — Milestone = top level (operator's, never created by orch), a
 field (operator renames `P0/P1/P2` → `Now/Next/Later` in the UI); no
 new fields, no `orch:bucket:*` labels, no Sprint/Iteration; `init
 --project N` adopts an existing Project (Pertasim #1 is orch's trial);
-Pipeline/Feature are pass-through. **r8d:** orch says "milestone", not
+Pipeline/Feature are pass-through. — superseded (2026-09-05): Feature options mirror contract domains and Pipeline is pass-through; see `2026-09-04-herdr-five-role-orchestration.md` §4. **r8d:** orch says "milestone", not
 "campaign", for the top level (GitHub's own word); the item marker
 `milestone: <LABEL>` is renamed `gate: <LABEL>` to keep one meaning.
 
@@ -72,7 +72,7 @@ config** rather than trusting agent-written records.
   No cross-clone lock. No GitHub-side owner-approval signal (the
   OWNER-APPROVED marker stays a chat-typed, owner-only marker, untouched
   by §4). Pertasim's `Feature`/`Priority` fields are left at GitHub
-  defaults and unused.
+  defaults and unused. — superseded (2026-09-05): Feature options mirror contract domains and Pipeline is pass-through; see `2026-09-04-herdr-five-role-orchestration.md` §4.
 
 ---
 
@@ -653,12 +653,12 @@ Milestone  = GitHub Milestone "C<n> …"   operator-owned; orch NEVER creates on
 | route item | **sub-issue** of the goal, same milestone, on the Project | body's last line `<!-- orch-item -->`; label `orch:item` |
 | `YOU` item | sub-issue assigned to the owner login, label `orch:you` (+ `orch:item`) | no special lane — rendered as the YOU track across goals |
 | bucket (`Now`/`Next`/`Later`) | the Project's existing **`Priority`** single-select on the item | r8c — no new field, no labels: the operator renames Pertasim's `P0/P1/P2` → `Now/Next/Later` once in the UI (option IDs survive, 150 items keep their value); `init` reads whatever options the field has and they ARE the buckets, in field order; `add-item --bucket <option>` |
-| track | `Pipeline` single-select on the item | pass-through: `--pipeline <existing option>` (and optional `--feature <existing option>`); `init` creates `Pipeline` from contract domains **only when the field is absent**, never edits an existing one |
+| track | `Pipeline` single-select on the item | pass-through: `--pipeline <existing option>` (and optional `--feature <existing option>`); `init` creates `Pipeline` from contract domains **only when the field is absent**, never edits an existing one — superseded (2026-09-05): Feature options mirror contract domains and Pipeline is pass-through; see `2026-09-04-herdr-five-role-orchestration.md` §4. |
 | `-> outcome`, `gate:` | body lines `outcome: …`, `gate: <LABEL>` | rendered as today's `= LABEL ✅` |
 | blocker | label `orch:blocked` **+** comment `blocked: <text> · owner: <who>` on the item | `clear-blocker` removes the label, comments `unblocked` |
 | `needs_attention` | label `orch:needs_attention` on the goal issue | ship phase, work ended without evidence |
 | goal status | **derived**, never stored (fold below) | — |
-| `Feature` | untouched unless `--feature` is passed | — |
+| `Feature` | untouched unless `--feature` is passed — superseded (2026-09-05): Feature options mirror contract domains and Pipeline is pass-through; see `2026-09-04-herdr-five-role-orchestration.md` §4. | — |
 
 **Redundancy check against Pertasim (r8c, 736 items profiled):** Status
 = progress (all items), Priority = ordinal horizon after the rename,

@@ -12,6 +12,8 @@ const board = R('skills/board/SKILL.md');
 const work = R('skills/go/work.md');
 const loop = R('skills/go/loop.md');
 const renderer = R('scripts/board-html.js');
+const milestone = R('skills/milestone/SKILL.md'); const setup = R('skills/setup/SKILL.md');
+const readme = R('README.md');
 
 let pass = 0, fail = 0, n = 0;
 function check(name, cond) {
@@ -21,7 +23,7 @@ function check(name, cond) {
 }
 
 // 1. ROUTE worklog line — canonical in go/SKILL.md, all six fields in order.
-const ROUTE = 'ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · approved:<operator|auto> · <date>';
+const ROUTE = 'ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · base:<sha> · review:<single|dual> · approved:<operator|auto> · <date>';
 check('go states the full ROUTE line grammar', go.includes(ROUTE));
 check('no other skill restates the ROUTE line', ![goal, board, work, loop].some(t => t.includes('ROUTE: lane:')));
 
@@ -57,6 +59,39 @@ check('board reads the ledger before → after', board.includes('before → afte
 // 4. LAUNCH journal line — canonical in loop.md.
 check('loop states the LAUNCH line grammar',
   loop.includes('LAUNCH <date> · <prompt file> · max-iter <n> · budget <tokens> · promise <string>'));
+
+// 5. Milestone grammar — canonical in skills/milestone/SKILL.md only.
+const MS_TITLE = 'M<n> · <objective>';
+const MS_DESC = 'target: <YYYY-MM-DD> · done: <observable>';
+check('milestone states the title grammar', milestone.includes(MS_TITLE));
+check('milestone states the description grammar', milestone.includes(MS_DESC));
+check('no other skill restates the milestone description grammar', ![go, goal, board, work, loop, setup].some(t => t.includes(MS_DESC)));
+for (const verb of ['define', 'split', 'prioritize', 'close']) check(`milestone has verb "${verb}"`, milestone.includes(`## ${verb}`));
+check('milestone skill refuses under ORCH_ROLE', milestone.includes('ORCH_ROLE'));
+check('milestone never creates goals itself', milestone.includes('/orch:goal') && !milestone.includes('add-goal'));
+check('milestone prioritize uses move on a goal', milestone.includes('move G<n> <Priority option>'));
+
+// 6. BRIEF — six lines, canonical in goal; feature: is the primary domain, read by add-goal.
+check('goal BRIEF carries the feature: line after domains:', /domains: <contract domains this will touch>\r?\n\s*feature: <primary domain/.test(goal));
+check('goal add-item line carries --accept and --recipe', goal.includes('[--accept "<criterion>"] [--recipe <name>]'));
+check('goal does not pass --feature to add-goal (the script reads the BRIEF)', !/add-goal[^\n]*--feature/.test(goal));
+
+// 7. Goal-pick rule — one sentence, in go only.
+const PICK = '`blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue';
+check('go states the goal-pick rule', go.includes(PICK));
+check('go no longer picks by most recently touched worklog', !go.includes('most recently touched'));
+check('goal always creates at least one step', goal.includes('Always create at least one step'));
+check('goal no longer says the feature is omitted when unsure', !/--feature[^\n]*omitted when unsure/.test(goal));
+check('board owns the sync verb', R('skills/board/SKILL.md').includes('sync-features'));
+check('go never chooses dual review at route time', !/dual review/.test(go));
+check('no lane prose in delegate/goal', !/the lane\b/.test(R('skills/go/delegate.md')) && !/the lane\b/.test(goal));
+check('setup asks for review-alt', R('skills/setup/SKILL.md').includes('review-alt'));
+
+// 8. setup syncs Feature options on domain change.
+check('setup runs sync-features after a domain edit', setup.includes('sync-features'));
+
+// 9. Five commands, stated once in README.
+check('README lists five commands', readme.includes('/orch:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
 
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

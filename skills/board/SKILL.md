@@ -2,20 +2,20 @@
 name: board
 description: >
   Render the orch route board: a read-only, forward-looking map of every
-  goal lane (buckets × tracks, the YOU owner lane, gates, today's
+  goal (buckets × tracks, the YOU owner row, gates, today's
   queue). Use when the operator wants to see progress, the path to done,
-  stale lanes, or pending ADRs — without starting any work. Do NOT use
+  stale goals, or pending ADRs — without starting any work. Do NOT use
   to start, route, or ship anything — /orch:go acts; this only looks.
 ---
 
 # /orch:board — three commands act, this one looks
 
-READ-ONLY. Never route, never delegate, never edit a file.
+READ-ONLY. Never route, never delegate, never edit a file. Two announced exceptions: `/orch:board init` (below) and `/orch:board sync`, which runs `node "<plugin>/scripts/board-gh.js" sync-features` — the Feature options mirror the contract's domain names; announce what it added.
 
 ## Gather (all best-effort — render what exists, label what doesn't)
 
 1. Board: `node "<plugin>/scripts/board-gh.js" read --json` — GitHub Issues
-   + the repo's Project ARE the board (spec §4): `goals[]` (lane `G<n>`,
+   + the repo's Project ARE the board (spec §4): `goals[]` (`lane` = `G<n>`,
    `name`, `milestone`, folded `status`, `blocker`, `items[]` incl. YOU
    items flagged `you`, the gate item carrying `gate`). No
    `.orch/board.json` → say "board not initialised — run
@@ -24,10 +24,10 @@ READ-ONLY. Never route, never delegate, never edit a file.
 2. Stale: an item's `updated` older than `board.staleDays`
    (`.claude/orch.json`, default 3) while its goal's status is unchanged
    → ⚠ with age.
-3. Metric per lane: last ledger line of `tmp/worklogs/G<n>-*.md`
+3. Metric per goal: last ledger line of `tmp/worklogs/G<n>-*.md`
    (`before → after`) plus the BRIEF `metric:` target.
-4. Gate digest per lane: `.claude/orch-audit.jsonl` entries whose files
-   match the lane's contract domains, since the operator's last board
+4. Gate digest per goal: `.claude/orch-audit.jsonl` entries whose files
+   match the goal's contract domains, since the operator's last board
    commit — count ALLOWs, BLOCKs, Rulings.
 5. Proposed ADRs in `docs/adr/` with ages.
 6. Missing sources render as `—` with a one-word reason (`pre-install`,
@@ -51,7 +51,7 @@ under a one-line milestone header, YOU last and visually distinct, gates
      ├─▶ <item>       ├─▶ <item>
     ───────────────────────────────────────────────────────
      GATES: <from ## GATES or the board's rules line>
-     ADRs: <NNNN proposed Nd ⚠ …> | GATE DIGEST where lane-level
+     ADRs: <NNNN proposed Nd ⚠ …> | GATE DIGEST where goal-level
      TODAY'S QUEUE: <current session order, from NOW items + parks>
 
 Done items keep their place with ✓ — the map read left-to-right IS the

@@ -35,7 +35,7 @@ operates within the allowed band.
 | Work shape | Vehicle |
 |---|---|
 | one-shot: read, scan, verify, single task with a clean brief | throwaway subagent — spawns, reports, exits; brief carries EVERYTHING it needs (it inherits nothing) |
-| a goal taking brief after brief — context worth keeping alive between briefs | resident pane (herdr-style) if your runtime has one: a ROLE with a name and a lifetime tied to the lane (`impl-G<n>`, `codex-G<n>`). No resident runtime → fresh subagents with the WORKLOG as the persistent memory |
+| a goal taking brief after brief — context worth keeping alive between briefs | resident pane (herdr-style) if your runtime has one: a ROLE with a name and a lifetime tied to the goal (`impl-G<n>`, `codex-G<n>`). No resident runtime → fresh subagents with the WORKLOG as the persistent memory |
 | verdicts, gates, plan changes | never delegated below high; the orchestrator interprets every verdict itself |
 
 Subagents never spawn their own reviewers — review comes from the
@@ -74,7 +74,7 @@ briefs may be shorter, but keep all eight headings.
 3. **Resume vs fresh — is its context an ASSET or a LIABILITY?** It wrote
    the code and knows its own choices → resume. It cannot see its own
    error, or the thread is long and full of dead ends → fresh, one tier up.
-4. **Lifetime = the lane.** A resident worker exists for one lane
+4. **Lifetime = the goal.** A resident worker exists for one goal
    (`G<n>`). Goal hits `merged` or killed → tear the worker down that same turn.
    An idle resident is cost without benefit; a stale one is worse — it
    answers from a world that moved.

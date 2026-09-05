@@ -15,9 +15,9 @@ function check(name, cond) {
 }
 const CFG = {
   owner: 'o', repo: 'r', projectOwner: 'o', ownerType: 'Organization', projectNumber: 1, projectId: 'PVT_1',
-  fieldIds: { status: 'F_S', priority: 'F_R', pipeline: 'F_P', feature: null },
+  fieldIds: { status: 'F_S', priority: 'F_R', pipeline: 'F_P', feature: 'F_F' },
   optionIds: { status: { Todo: 's1', 'In progress': 's2', 'In review': 's3', Done: 's4' },
-    priority: { Now: 'r1', Next: 'r2', Later: 'r3' }, pipeline: { Engine: 'p1' }, feature: {} },
+    priority: { Now: 'r1', Next: 'r2', Later: 'r3' }, pipeline: { Engine: 'p1' }, feature: { numerics: 'f1', hmi: 'f2' } },
 };
 function writeCfg(c) { fs.writeFileSync(path.join(CWD, '.orch', 'board.json'), JSON.stringify(c)); }
 function fakeGh(handlers) {
@@ -29,12 +29,12 @@ function fakeGh(handlers) {
 }
 function run(argv, gh, extra = {}) {
   let out = '';
-  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, ...extra });
+  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, env: {}, ...extra });
   return { code, out };
 }
-const pi = (status, pipeline, priority) => ({ nodes: [{ project: { id: 'PVT_1' }, fieldValues: { nodes: [
+const pi = (status, pipeline, priority, feature) => ({ nodes: [{ project: { id: 'PVT_1' }, fieldValues: { nodes: [
   status ? { name: status, field: { name: 'Status' } } : null, pipeline ? { name: pipeline, field: { name: 'Pipeline' } } : null,
-  priority ? { name: priority, field: { name: 'Priority' } } : null].filter(Boolean) } }] });
+  priority ? { name: priority, field: { name: 'Priority' } } : null, feature ? { name: feature, field: { name: 'Feature' } } : null].filter(Boolean) } }] });
 
 // --- no config → refuse -------------------------------------------------------
 fs.rmSync(path.join(CWD, '.orch', 'board.json'), { force: true });
@@ -43,27 +43,33 @@ fs.rmSync(path.join(CWD, '.orch', 'board.json'), { force: true });
 // --- milestones ---------------------------------------------------------------
 writeCfg(CFG);
 {
-  const gh = fakeGh([[/GET repos\/o\/r\/milestones/, () => [
+  const gh = fakeGh([[/GET repos\/o\/r\/milestones\?state=open/, () => [
     { number: 52, title: 'backlog', open_issues: 4, closed_issues: 25 },
     { number: 50, title: 'C2 Authoring tools ready', open_issues: 8, closed_issues: 2 },
+    { number: 55, title: 'M3 · October target', open_issues: 1, closed_issues: 0 },
     { number: 49, title: 'C1 SHU-HDS operable', open_issues: 60, closed_issues: 9 },
     { number: 30, title: 'v0.9.1', open_issues: 0, closed_issues: 7 } ]]]);
-  const r = run(['milestones'], gh);
-  const j = JSON.parse(r.out);
-  check('milestones: C<n> numeric first, then backlog, then rest', j.map(c => c.number).join() === '49,50,52,30' && j[0].open === 60);
+  const j = JSON.parse(run(['milestones'], gh).out);
+  check('milestones: M<n>/C<n> numeric first, then backlog, then rest', j.map(c => c.number).join() === '49,50,55,52,30' && j[0].open === 60);
+  const { milestoneRank } = require('../scripts/board-gh');
+  check('milestoneRank: M3 → 3, C2 → 2, backlog → 1e6, other → 1e7',
+    milestoneRank('M3 · October target') === 3 && milestoneRank('C2 Authoring') === 2 && milestoneRank('backlog') === 1e6 && milestoneRank('v0.9.1') === 1e7);
 }
 
 // --- read folds goal status -----------------------------------------------------
 const GOALS = { repository: { issues: { nodes: [
   { number: 142, title: 'knowledge-gate', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'BRIEF\ngoal: x',
-    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo'),
+    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo', null, 'Next', 'hmi'),
     subIssues: { nodes: [
-      { number: 150, title: 'write grammar', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'write grammar\n\noutcome: canonical home\n<!-- orch-item -->',
+      { number: 150, title: 'write grammar', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'write grammar\n\nstep: S1\noutcome: canonical home\naccept: grammar test names the file\nrecipe: tdd\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('In progress', 'Engine', 'Now') },
-      { number: 151, title: 'gate wired', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'gate wired\n\ngate: GATE LIVE\n<!-- orch-item -->',
+      { number: 151, title: 'gate wired', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'gate wired\n\nstep: S2\ngate: GATE LIVE\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('Todo', null, 'Next') },
-      { number: 152, title: 'run /orch:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /orch:setup\n<!-- orch-item -->',
+      { number: 152, title: 'run /orch:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /orch:setup\n\nstep: S3\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }, { name: 'orch:you' }] }, assignees: { nodes: [{ login: 'me' }] }, projectItems: pi('Todo') } ] } },
+  { number: 143, title: 'second goal', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'BRIEF\ngoal: y',
+    milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo', null, 'Now'),
+    subIssues: { nodes: [] } },
   { number: 99, title: 'old goal', state: 'CLOSED', updatedAt: '2026-08-01T00:00:00Z', body: 'BRIEF', milestone: null,
     labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Done'), subIssues: { nodes: [] } },
 ] } } };
@@ -72,13 +78,27 @@ const GOALS = { repository: { issues: { nodes: [
   const r = run(['read', '--json'], gh);
   const j = JSON.parse(r.out);
   check('read exits 0', r.code === 0);
-  check('goal G142 in milestone 49 folds running', j.goals[0].lane === 'G142' && j.goals[0].milestone.number === 49 && j.goals[0].status === 'running' && j.goals[0].brief.startsWith('BRIEF'));
-  check('items carry bucket(Priority)/pipeline/outcome/gate/you', j.goals[0].items[0].bucket === 'Now' && j.goals[0].items[0].pipeline === 'Engine' && j.goals[0].items[0].outcome === 'canonical home' && j.goals[0].items[1].bucket === 'Next' && j.goals[0].items[1].gate === 'GATE LIVE' && j.goals[0].items[2].you === true);
-  check('unset Priority → first bucket', j.goals[0].items[2].bucket === 'Now');
-  check('closed goal folds merged, null milestone sorts last', j.goals[1].lane === 'G99' && j.goals[1].status === 'merged' && j.goals[1].milestone === null);
+  const g142 = j.goals.find(g => g.lane === 'G142'), g99 = j.goals.find(g => g.lane === 'G99');
+  check('goal G142 in milestone 49 folds running', g142.milestone.number === 49 && g142.status === 'running' && g142.brief.startsWith('BRIEF'));
+  check('items carry bucket(Priority)/pipeline/outcome/gate/you', g142.items[0].bucket === 'Now' && g142.items[0].pipeline === 'Engine' && g142.items[0].outcome === 'canonical home' && g142.items[1].bucket === 'Next' && g142.items[1].gate === 'GATE LIVE' && g142.items[2].you === true && g142.items[0].step === 'S1' && g142.items[2].step === 'S3' && g142.items[0].accept === 'grammar test names the file' && g142.items[0].recipe === 'tdd');
+  check('unset Priority → first bucket', g142.items[2].bucket === 'Now');
+  check('closed goal folds merged, null milestone sorts last', g99.status === 'merged' && g99.milestone === null && j.goals[j.goals.length - 1].lane === 'G99');
   check('read makes exactly one graphql call', gh.calls.length === 1 && gh.calls[0].kind === 'graphql');
   check('--goal filters', JSON.parse(run(['read', '--json', '--goal', 'G99'], gh).out).goals.length === 1);
   check('buckets = Priority options in order', j.buckets.join() === 'Now,Next,Later');
+  check('goals sort Priority-first across milestones, then milestone, then issue', j.goals.map(g => g.lane).join() === 'G143,G142,G99');
+  check('goal carries bucket and feature', g142.bucket === 'Next' && g142.feature === 'hmi' && j.goals.find(g => g.lane === 'G143').feature === null);
+}
+{
+  const two = JSON.parse(JSON.stringify(GOALS));
+  two.repository.issues.nodes[0].milestone = { number: 60, title: 'M2 · later' }; // G142 (Next) moves to a higher milestone
+  two.repository.issues.nodes[1].milestone = { number: 49, title: 'C1 SHU-HDS operable' };
+  two.repository.issues.nodes[1].projectItems = pi('Todo', null, 'Next'); // G143 becomes Next too
+  const j = JSON.parse(run(['read', '--json'], fakeGh([[/subIssues/, () => two]])).out);
+  check('same bucket → lower milestone first', j.goals.map(g => g.lane).slice(0, 2).join() === 'G143,G142');
+  two.repository.issues.nodes[0].projectItems = pi('Todo', null, 'Now', 'hmi'); // G142 Now under M2 beats G143 Next under C1
+  const j2 = JSON.parse(run(['read', '--json'], fakeGh([[/subIssues/, () => two]])).out);
+  check('Now under a later milestone beats Next under an earlier one', j2.goals.map(g => g.lane).slice(0, 2).join() === 'G142,G143');
 }
 {
   const blocked = JSON.parse(JSON.stringify(GOALS));
@@ -86,23 +106,28 @@ const GOALS = { repository: { issues: { nodes: [
   const gh = fakeGh([[/subIssues/, () => blocked],
     [/GET repos\/o\/r\/issues\/151\/comments/, () => [{ body: 'blocked: needs setup · owner: you\n<!-- opId:abc -->' }]]]);
   const j = JSON.parse(run(['read', '--json'], gh).out);
-  check('blocked fold pulls blocker text from latest blocked: comment', j.goals[0].status === 'blocked' && j.goals[0].blocker === 'blocked: needs setup · owner: you');
+  const gb = j.goals.find(g => g.lane === 'G142');
+  check('blocked fold pulls blocker text from latest blocked: comment', gb.status === 'blocked' && gb.blocker === 'blocked: needs setup · owner: you');
 }
 // --- write verbs -----------------------------------------------------------------
 const JOURNAL = path.join(COMMON, 'orch', 'board-journal.jsonl');
 const BRIEF = path.join(SCRATCH, 'brief.md');
-fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nkill: 3 sessions\n');
+fs.writeFileSync(BRIEF, 'BRIEF\ngoal: learn from ships\nmetric: lessons/ship\ndone: gate live\ndomains: numerics\nfeature: numerics\nkill: 3 sessions\n');
 function ghStore() {
-  const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', state: 'open', open_issues: 0, closed_issues: 0 }],
-    issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null };
+  const st = { milestones: [{ number: 49, title: 'C1 SHU-HDS operable', description: '', state: 'open', open_issues: 0, closed_issues: 0 }, { number: 52, title: 'backlog', description: '', state: 'open', open_issues: 0, closed_issues: 0 }],
+    issues: {}, comments: {}, items: {}, fields: {}, parent: {}, next: 140, fail: null, extraGoalsInMilestone: 0, swapGoalInMilestone: false };
   const FIELD = { F_S: ['status', 'Status'], F_R: ['priority', 'Priority'], F_P: ['pipeline', 'Pipeline'], F_F: ['feature', 'Feature'] };
   const optName = (fid, oid) => Object.entries(CFG.optionIds[FIELD[fid][0]]).find(([, id]) => id === oid)[0];
   const fv = i => st.items[i.node_id] ? [{ project: { id: 'PVT_1' }, fieldValues: { nodes: Object.entries(st.fields).filter(([k]) => k.startsWith(st.items[i.node_id] + ':')).map(([k, o]) => { const fid = k.split(':')[1]; return { name: optName(fid, o), field: { name: FIELD[fid][1] } }; }) } }] : [];
   const node = i => ({ number: i.number, title: i.title, body: i.body, state: i.state.toUpperCase(), updatedAt: 'now', milestone: i.milestone ? st.milestones.find(m => m.number === i.milestone) : null,
     labels: { nodes: i.labels }, assignees: { nodes: (i.assignees || []).map(login => ({ login })) }, projectItems: { nodes: fv(i) } });
   const handlers = [
-    [/GET repos\/o\/r\/milestones/, () => st.milestones],
+    [/GET repos\/o\/r\/milestones\?state=(open|all)/, (b, k) => { const s = k.match(/state=(\w+)/)[1]; const page = Number((k.match(/[?&]page=(\d+)/) || [])[1] || 1); return st.milestones.filter(m => s === 'all' || m.state === s).slice((page - 1) * 100, page * 100); }],
+    [/POST repos\/o\/r\/milestones$/, b => { const m = { number: Math.max(52, ...st.milestones.map(m => m.number)) + 1, state: 'open', open_issues: 0, closed_issues: 0, ...b }; st.milestones.push(m); return m; }],
+    [/PATCH repos\/o\/r\/milestones\/(\d+)/, (b, k) => { const m = st.milestones.find(m => m.number === Number(k.match(/milestones\/(\d+)/)[1])); Object.assign(m, b); return m; }],
     [/GET user$/, () => ({ login: 'me' })],
+    [/GET repos\/o\/r\/issues\?milestone=(\d+)&labels=orch:goal/, (b, k) => { const ms = Number(k.match(/milestone=(\d+)/)[1]); const real = Object.values(st.issues).filter(i => i.milestone === ms && i.labels.some(x => x.name === 'orch:goal')); const n = st.extraGoalsInMilestone; if (st.swapGoalInMilestone) return real.map((i, k) => k === 0 ? { number: 9100, labels: i.labels } : i); return n < 0 ? real.slice(0, real.length + n) : real.concat(Array.from({ length: n }, (_, i) => ({ number: 9000 + i, labels: [{ name: 'orch:goal' }] }))); }],
+    [/GET repos\/o\/r\/issues\/(\d+)\/sub_issues/, (b, k) => { const p = Number(k.match(/issues\/(\d+)/)[1]); return Object.values(st.issues).filter(c => st.parent[c.number] === p).map(c => ({ number: c.number, body: c.body, state: c.state })); }],
     // identity probe: all orch issues with the given label, newest first
     [/GET repos\/o\/r\/issues\?/, (b, k) => { const l = decodeURIComponent(k.match(/labels=([^&]*)/)[1]);
       return Object.values(st.issues).filter(i => i.labels.some(x => x.name === l)).sort((a, c) => c.number - a.number); }],
@@ -146,6 +171,12 @@ writeCfg(CFG);
   check('--bucket Next → Priority option r2; --gate in body', st.fields['PI_I_' + n2 + ':F_R'] === 'r2' && /\ngate: GATE LIVE\n/.test(st.issues[n2].body) && !st.issues[n2].labels.some(l => l.name.startsWith('orch:bucket')));
   r = run(['add-item', 'G140', 'x', '--bucket', 'Someday'], gh);
   check('unknown bucket refused, lists valid options', r.code === 1 && /Now, Next, Later/.test(r.out));
+  r = run(['add-item', 'G140', 'x', '--bucket'], gh);
+  check('bare --bucket is refused', r.code === 1 && /--bucket requires a value/.test(r.out));
+  r = run(['add-goal', '49', 'y', '--brief'], gh);
+  check('bare --brief is refused', r.code === 1 && /--brief requires a value/.test(r.out));
+  r = run(['read', '--goal'], gh);
+  check('bare read --goal is refused', r.code === 1 && /--goal requires a value/.test(r.out));
   r = run(['move', String(n2), 'Later'], gh);
   check('move sets Priority only', r.code === 0 && st.fields['PI_I_' + n2 + ':F_R'] === 'r3' && !st.comments[n2]);
   run(['move', String(n2), 'Next'], gh);
@@ -244,6 +275,174 @@ writeCfg(CFG);
   check('locked repo without board.github → refuse', r1.code === 1 && /board\.github/.test(r1.out));
   const r2 = run(['add-goal', '49', 'z', '--brief', BRIEF], gh, { lockCfg: { __repoLocked: true, board: { github: true } } });
   check('locked repo with board.github → allowed', r2.code === 0);
+}
+// --- add-milestone / close-milestone / move on goals (Director-only, journaled) ----
+{
+  const { st, gh } = ghStore();
+  let r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'operator runs a shift on HMI alone'], gh);
+  const m = st.milestones.find(x => /Ship the HMI$/.test(x.title));
+  check('add-milestone creates then retitles to M<github#> · objective, prints M<github#>', r.code === 0 && m && m.number === 53 && m.title === 'M53 · Ship the HMI' && r.out.trim() === 'M53');
+  check('add-milestone description/due_on follow the grammar', m.description === 'target: 2026-10-31 · done: operator runs a shift on HMI alone' && m.due_on === '2026-10-31T00:00:00Z');
+  const before = st.milestones.length;
+  r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('add-milestone is idempotent on the objective', r.code === 0 && st.milestones.length === before && /exists: #53/.test(r.out));
+  r = run(['add-milestone', 'SHU-HDS operable', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a legacy C1 title does not count as the same objective', r.code === 0 && st.milestones.length === before + 1);
+  st.milestones.push({ number: 70, title: 'M9 · Wrong ordinal', description: '', state: 'open', open_issues: 0, closed_issues: 0 });
+  r = run(['add-milestone', 'Wrong ordinal', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a malformed M<k> title (k ≠ number) is refused, not adopted', r.code === 1 && /malformed/.test(r.out) && !st.milestones.some(m => m.title === 'M70 · Wrong ordinal'));
+  st.milestones.pop();
+  r = run(['add-milestone', 'Anything', '--target', '2026-99-99', '--done', 'x'], gh);
+  check('add-milestone rejects an impossible date', r.code === 1 && /YYYY-MM-DD/.test(r.out));
+  r = run(['add-milestone', 'Anything', '--target', '2026-10-31'], gh);
+  check('add-milestone requires --done', r.code === 1 && /usage: add-milestone/.test(r.out));
+  r = run(['add-milestone', 'Anything', '--target', '2026-10-31', '--done', 'x'], gh, { env: { ORCH_ROLE: 'coordinator' } });
+  check('add-milestone refuses inside a roled pane, before any call', r.code === 1 && /refused/.test(r.out) && /ORCH_ROLE=coordinator/.test(r.out) && st.milestones.length === before + 1);
+
+  run(['add-goal', String(m.number), 'HDS', '--brief', BRIEF], gh);
+  const s1 = Number(run(['add-item', 'G140', 'the only step', '--gate', 'DONE'], gh).out.trim());
+  r = run(['close-milestone', String(m.number), '--summary', 'shift ran alone'], gh);
+  check('close-milestone refuses while a goal is not merged, names it', r.code === 1 && /G140/.test(r.out) && m.state === 'open');
+  st.extraGoalsInMilestone = 1; // one orch:goal issue the 50-goal read window would miss
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal count exceeds what read returned', r.code === 1 && /differs/.test(r.out));
+  st.extraGoalsInMilestone = -1; // REST returns fewer than read (concurrent move)
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal count is lower than read', r.code === 1 && /differs/.test(r.out));
+  st.extraGoalsInMilestone = 0;
+  st.swapGoalInMilestone = true; // same count, different membership (merged goal moved out, open one moved in)
+  r = run(['close-milestone', String(m.number), '--summary', 'x'], gh);
+  check('close-milestone refuses when the REST goal set differs at equal count', r.code === 1 && /differs/.test(r.out));
+  st.swapGoalInMilestone = false;
+  r = run(['move', 'G140', 'Later'], gh);
+  check('move on a goal sets the goal Priority', r.code === 0 && st.fields['PI_I_140:F_R'] === 'r3');
+  r = run(['move', 'G140', 'Now'], gh, { env: { ORCH_ROLE: 'dev' } });
+  check('move on a goal refuses inside a roled pane', r.code === 1 && /refused/.test(r.out) && st.fields['PI_I_140:F_R'] === 'r3');
+  r = run(['add-goal', '49', 'empty', '--brief', BRIEF], gh); // add-goal→140, add-item→141, so this goal is 142
+  r = run(['close-goal', 'G142', '--evidence', 'iter 1 · G142 · done'], gh);
+  check('close-goal refuses a goal with no step', r.code === 1 && /no step/.test(r.out) && st.issues[142].state === 'open');
+  run(['done', String(s1)], gh);
+  run(['close-goal', 'G140', '--evidence', 'iter 1 · G140 · done'], gh);
+  r = run(['close-milestone', 'M53 · Ship the HMI', '--summary', 'shift ran alone'], gh);
+  check('close-milestone by title closes when every goal is merged, appends closed/summary', r.code === 0 && m.state === 'closed' && /\nclosed: \d{4}-\d{2}-\d{2} · summary: shift ran alone$/.test(m.description) && /closed \(1 goals\)/.test(r.out));
+  r = run(['close-milestone', '52', '--summary', 'x'], gh);
+  check('close-milestone refuses a milestone with zero goals', r.code === 1 && /nothing was done/.test(r.out));
+  r = run(['close-milestone', '52'], gh);
+  check('close-milestone requires --summary', r.code === 1 && /--summary/.test(r.out));
+  r = run(['close-milestone', '52', '--summary', 'x'], gh, { env: { ORCH_ROLE: 'coordinator' } });
+  check('close-milestone refuses inside a roled pane', r.code === 1 && /refused/.test(r.out));
+}
+// --- replay never executes a Director-only action in a roled pane -----------------
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh); // un-roled, before the intent exists
+  openJournal(JOURNAL).intent({ opId: 'D:0', actionId: 'D', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args: { objective: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } }, desired: { title: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } });
+  const r = run(['add-item', 'G140', 'x'], gh, { env: { ORCH_ROLE: 'dev' } });
+  check('roled add-item leaves the pending add-milestone pending and says so', r.code === 0 && !st.milestones.some(m => /Pending/.test(m.title)) && /skipped 1 Director-only pending/.test(r.out) && openJournal(JOURNAL).pending().length === 1);
+  const r2 = run(['add-item', 'G140', 'y'], gh);
+  check('un-roled call replays it, create then retitle', r2.code === 0 && st.milestones.some(m => m.title === 'M53 · Pending') && openJournal(JOURNAL).pending().length === 0);
+}
+// --- crash between create and retitle: replay retitles, never duplicates ---------
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  st.milestones.push({ number: 53, title: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const args = { objective: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' };
+  openJournal(JOURNAL).intent({ opId: 'H:0', actionId: 'H', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args }, desired: { title: 'Half done', description: args.description, due_on: args.due_on } });
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  check('replay after a crash between create and retitle adopts #53 and retitles it', st.milestones.filter(m => /Half done$/.test(m.title)).length === 1 && st.milestones[2].title === 'M53 · Half done' && openJournal(JOURNAL).pending().length === 0);
+}
+// --- crash between create-done and retitle-intent: no journal record, bare title -----
+{
+  const { st, gh } = ghStore();
+  const { openJournal } = require('../scripts/lib/journal');
+  fs.rmSync(JOURNAL, { force: true });
+  st.milestones.push({ number: 53, title: 'Bare', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const before = st.milestones.length;
+  const r = run(['add-milestone', 'Bare', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('a bare <objective> title is half-done: retitled, not reused, not duplicated', r.code === 0 && r.out.trim() === 'M53' && st.milestones.length === before && st.milestones[2].title === 'M53 · Bare' && openJournal(JOURNAL).pending().length === 0);
+}
+// --- milestone lookups page past 100 -------------------------------------------------
+{
+  const { st, gh } = ghStore();
+  for (let i = 0; i < 100; i++) st.milestones.push({ number: 200 + i, title: `filler ${i}`, description: '', state: 'open', open_issues: 0, closed_issues: 0 });
+  st.milestones.push({ number: 300, title: 'M300 · On page two', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
+  const before = st.milestones.length;
+  let r = run(['add-milestone', 'On page two', '--target', '2026-10-31', '--done', 'x'], gh);
+  check('add-milestone finds an existing milestone on page 2', r.code === 0 && /exists: #300/.test(r.out) && st.milestones.length === before);
+  r = run(['close-milestone', '300', '--summary', 'x'], gh);
+  check('close-milestone finds its target on page 2 (refuses for zero goals, not "no open milestone")', r.code === 1 && /has no goals/.test(r.out) && !/no open milestone/.test(r.out));
+}
+// --- accept: / recipe: ----------------------------------------------------------
+{
+  const { parseBody, bodyOf, RECIPES, EXEC_RECIPES } = require('../scripts/board-gh');
+  check('RECIPES is the seven-name list', RECIPES.join() === 'spec,tdd,iterate,debug,research,cleanup,fast');
+  check('EXEC_RECIPES is the execution group', EXEC_RECIPES.join() === 'tdd,iterate,debug,cleanup,fast');
+  const body = bodyOf('wire the gate', { step: 'S2', outcome: 'gate wired', gate: 'GATE LIVE', accept: 'test-grammar passes', recipe: 'tdd' });
+  check('bodyOf orders step, outcome, gate, accept, recipe, mark last', body === 'wire the gate\n\nstep: S2\noutcome: gate wired\ngate: GATE LIVE\naccept: test-grammar passes\nrecipe: tdd\n<!-- orch-item -->');
+  const p = parseBody(body + '\n<!-- opId:x -->');
+  check('parseBody reads step, accept and recipe', p.step === 'S2' && p.accept === 'test-grammar passes' && p.recipe === 'tdd' && p.gate === 'GATE LIVE');
+  check('legacy body → null step/accept/recipe', parseBody('old\n\noutcome: y\n<!-- orch-item -->').step === null && parseBody('old').recipe === null);
+  const { st, gh } = ghStore();
+  run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
+  let r = run(['add-item', 'G140', 'wire the gate', '--accept', 'test-grammar passes', '--recipe', 'tdd'], gh);
+  const n = Number(r.out.trim());
+  check('add-item assigns step: S1 and writes accept:/recipe:', r.code === 0 && /\nstep: S1\n/.test(st.issues[n].body) && /\naccept: test-grammar passes\nrecipe: tdd\n<!-- opId:/.test(st.issues[n].body));
+  r = run(['add-item', 'G140', 'second'], gh);
+  check('next add-item gets S2', /\nstep: S2\n/.test(st.issues[Number(r.out.trim())].body));
+  run(['done', String(n)], gh);
+  r = run(['add-item', 'G140', 'third'], gh);
+  check('step numbers are never reused (S3 after S1 closed)', /\nstep: S3\n/.test(st.issues[Number(r.out.trim())].body));
+  for (let i = 0; i < 45; i++) run(['add-item', 'G140', 'bulk ' + i], gh); // past the 40-item read window
+  r = run(['add-item', 'G140', 'forty-ninth'], gh);
+  check('step allocation pages all sub-issues, not the 40-item read window', /\nstep: S49\n/.test(st.issues[Number(r.out.trim())].body));
+  r = run(['add-item', 'G140', 'x', '--recipe', 'yolo'], gh);
+  check('add-item rejects an unknown recipe', r.code === 1 && /recipe must be one of tdd \| iterate/.test(r.out));
+  r = run(['add-item', 'G140', 'x', '--recipe', 'spec'], gh);
+  check('add-item rejects a shaping recipe on a step', r.code === 1 && /recipe must be one of tdd \| iterate/.test(r.out) && !Object.values(st.issues).some(i => /recipe: spec/.test(i.body)));
+  r = run(['add-item', 'G140', 'x', '--recipe'], gh);
+  check('bare --recipe is refused', r.code === 1 && /--recipe requires a value/.test(r.out));
+}
+// --- feature: parsed from the BRIEF; items inherit ---------------------------------
+{
+  const { st, gh } = ghStore();
+  let r = run(['add-goal', '49', 'HDS', '--brief', BRIEF], gh);
+  check('add-goal sets the goal Feature from the brief feature: line', r.code === 0 && st.fields['PI_I_140:F_F'] === 'f1');
+  check('add-goal writes no base: line', !/^base:/m.test(st.issues[140].body));
+  const noFeat = path.join(SCRATCH, 'brief-nofeat.md'); fs.writeFileSync(noFeat, 'BRIEF\ngoal: z\ndomains: hmi\n');
+  r = run(['add-goal', '49', 'Z', '--brief', noFeat], gh);
+  check('add-goal refuses a brief without feature: when the Project has a Feature field', r.code === 1 && /feature:/.test(r.out) && !st.issues[141]);
+  const notInDomains = path.join(SCRATCH, 'brief-notin.md'); fs.writeFileSync(notInDomains, 'BRIEF\ngoal: z\ndomains: numerics\nfeature: hmi\n');
+  r = run(['add-goal', '49', 'Z', '--brief', notInDomains], gh);
+  check('add-goal refuses a feature: that is not one of domains:', r.code === 1 && /not one of domains/.test(r.out) && !st.issues[141]);
+  const badFeat = path.join(SCRATCH, 'brief-bad.md'); fs.writeFileSync(badFeat, 'BRIEF\ngoal: z\nfeature: nope\n');
+  r = run(['add-goal', '49', 'Z', '--brief', badFeat], gh);
+  check('add-goal refuses an unknown feature before writing', r.code === 1 && /unknown feature "nope"/.test(r.out) && !st.issues[141]);
+  r = run(['add-item', 'G140', 'inherits'], gh);
+  const n1 = Number(r.out.trim());
+  check('add-item inherits the goal feature', st.fields['PI_I_' + n1 + ':F_F'] === 'f1');
+  r = run(['add-item', 'G140', 'overrides', '--feature', 'hmi'], gh);
+  const n2 = Number(r.out.trim());
+  check('add-item --feature overrides the inherited value', st.fields['PI_I_' + n2 + ':F_F'] === 'f2');
+  // a record journaled before this task (feature: null in args) still inherits on replay
+  const { openJournal } = require('../scripts/lib/journal');
+  const args = { goal: 140, lane: 'G140', title: 'old', text: 'old', body: require('../scripts/board-gh').bodyOf('old', { step: 'S9' }), labels: ['orch:item'], milestoneNumber: 49, bucket: 'Now', pipeline: null, feature: null, assignee: null };
+  openJournal(JOURNAL).intent({ opId: 'B:0', actionId: 'B', lane: 'G140', subEffect: 'createIssue', action: { name: 'add-item', args }, desired: { goal: 140, title: 'old', text: 'old', body: args.body, labels: args.labels, milestoneNumber: 49, assignee: null } });
+  run(['add-item', 'G140', 'trigger replay'], gh);
+  const old = Object.values(st.issues).find(i => i.title === 'old');
+  check('replayed pre-upgrade add-item inherits the goal feature', old && st.fields['PI_' + old.node_id + ':F_F'] === 'f1');
+  delete st.fields['PI_I_140:F_F']; // the goal predates the Feature field (adopt mode); only its BRIEF says feature:
+  r = run(['add-item', 'G140', 'late field'], gh);
+  check('add-item falls back to the BRIEF feature: line when the goal has no Feature value', st.fields['PI_I_' + r.out.trim() + ':F_F'] === 'f1');
+  // a goal record journaled before this task (no feature key) parses feature: from its body on replay
+  const gBody = fs.readFileSync(BRIEF, 'utf8');
+  openJournal(JOURNAL).intent({ opId: 'C:0', actionId: 'C', lane: 'G?', subEffect: 'createGoal', action: { name: 'add-goal', args: { name: 'pre-upgrade goal', body: gBody, milestoneNumber: 49 } }, desired: { title: 'pre-upgrade goal', body: gBody, milestoneNumber: 49 } });
+  run(['add-item', 'G140', 'trigger replay again'], gh);
+  const pre = Object.values(st.issues).find(i => i.title === 'pre-upgrade goal');
+  check('replayed pre-upgrade add-goal sets Feature from the body feature: line', pre && st.fields['PI_' + pre.node_id + ':F_F'] === 'f1');
 }
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();

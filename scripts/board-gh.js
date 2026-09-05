@@ -39,13 +39,18 @@ function stripOpId(body) {
   // The opId marker is identity metadata (spec §4.3), never board content.
   return (body || '').split(/\r?\n/).filter(l => !/^<!-- opId:.* -->$/.test(l.trim()));
 }
+const RECIPES = ['spec', 'tdd', 'iterate', 'debug', 'research', 'cleanup', 'fast']; // spec §8
+const EXEC_RECIPES = ['tdd', 'iterate', 'debug', 'cleanup', 'fast']; // the only ones a step may carry
+
 function parseBody(body) {
   const lines = stripOpId(body).filter(l => l.trim() !== MARK);
   const grab = re => { const m = lines.map(l => l.match(re)).find(Boolean); return m ? m[1].trim() : null; };
-  return { text: (lines[0] || '').trim(), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i) };
+  return { text: (lines[0] || '').trim(), step: grab(/^step:\s*(S\d+)/i), outcome: grab(/^outcome:\s*(.+)$/i), gate: grab(/^gate:\s*(.+)$/i),
+    accept: grab(/^accept:\s*(.+)$/i), recipe: grab(/^recipe:\s*(\S+)/i) };
 }
-function bodyOf(text, { outcome, gate } = {}) {
-  return [text, '', outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null, MARK].filter(x => x !== null).join('\n');
+function bodyOf(text, { step, outcome, gate, accept, recipe } = {}) {
+  return [text, '', step ? `step: ${step}` : null, outcome ? `outcome: ${outcome}` : null, gate ? `gate: ${gate}` : null,
+    accept ? `accept: ${accept}` : null, recipe ? `recipe: ${recipe}` : null, MARK].filter(x => x !== null).join('\n');
 }
 
 // ponytail: page sizes are bounded by GitHub's 500k-node estimate (goals × projectItems × fieldValues × subIssues × …);
@@ -77,22 +82,39 @@ function readBoard(gh, cfg) {
       const status = fieldOf(i, cfg, 'Status');
       return { issue: i.number, labels, status, pipeline: fieldOf(i, cfg, 'Pipeline'), feature: fieldOf(i, cfg, 'Feature'),
         bucket: fieldOf(i, cfg, 'Priority') || cfg.buckets[0],
-        text: b.text || i.title, outcome: b.outcome, gate: b.gate,
+        text: b.text || i.title, outcome: b.outcome, gate: b.gate, step: b.step, accept: b.accept, recipe: b.recipe,
         done: i.state === 'CLOSED' || status === 'Done', you: labels.includes('orch:you'), updated: i.updatedAt };
     });
     const forFold = items.map(i => ({ labels: i.labels, status: i.status,
       blockerComment: i.labels.includes('orch:blocked') ? latestComment(gh, cfg, i.issue, 'blocked:') : null }));
     const { status, blocker } = foldStatus({ state: g.state.toLowerCase(), labels: g.labels.nodes.map(l => l.name) }, forFold);
     return { lane: `G${g.number}`, issue: g.number, name: g.title, milestone: g.milestone ? { number: g.milestone.number, title: g.milestone.title } : null,
+      bucket: fieldOf(g, cfg, 'Priority'), feature: fieldOf(g, cfg, 'Feature'),
       status, blocker, brief: stripOpId(g.body).join('\n'), updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
-  }).sort((a, b) => ((a.milestone ? a.milestone.number : Infinity) - (b.milestone ? b.milestone.number : Infinity)) || (a.issue - b.issue));
+  }).sort((a, b) => {
+    // Spec §4 one rule: Priority bucket across milestones (unset last) → milestone (none last) → issue.
+    const bi = x => (x.bucket ? cfg.buckets.indexOf(x.bucket) : cfg.buckets.length);
+    const mi = x => (x.milestone ? x.milestone.number : Infinity);
+    return (bi(a) - bi(b)) || (mi(a) - mi(b)) || (a.issue - b.issue);
+  });
   return { goals, buckets: cfg.buckets };
 }
 
+// M<n> is the milestone grammar (spec §2); C<n> is the legacy prefix and
+// still ranks — orch never renames an existing milestone.
+function milestoneRank(t) { const m = /^[MC](\d+)\b/.exec(t || ''); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; }
+function pagedMilestones(gh, R, state) { // REST pages at 100; a repo can have more
+  const out = [];
+  for (let page = 1; ; page++) {
+    const p = gh.rest('GET', `${R}/milestones?state=${state}&per_page=100&page=${page}`) || [];
+    out.push(...p);
+    if (p.length < 100) break;
+  }
+  return out;
+}
 function listMilestones(gh, cfg) {
-  const ms = gh.rest('GET', `repos/${cfg.owner}/${cfg.repo}/milestones?state=open&per_page=100`) || [];
-  const rank = t => { const m = /^C(\d+)\b/.exec(t); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; };
-  return ms.map(m => ({ number: m.number, title: m.title, open: m.open_issues, closed: m.closed_issues, r: rank(m.title) }))
+  const ms = pagedMilestones(gh, `repos/${cfg.owner}/${cfg.repo}`, 'open');
+  return ms.map(m => ({ number: m.number, title: m.title, open: m.open_issues, closed: m.closed_issues, r: milestoneRank(m.title) }))
     .sort((a, b) => a.r - b.r || a.number - b.number).map(({ r, ...m }) => m);
 }
 
@@ -100,13 +122,15 @@ function main(argv, deps = {}) {
   const cwd = deps.cwd || process.cwd();
   const stdout = deps.stdout || (s => process.stdout.write(s));
   const gh = deps.gh || makeGh();
+  const env = deps.env || process.env;
   const { pos, opt } = parseArgs(argv);
   const verb = pos[0];
-  if (!verb) { stdout('usage: board-gh <init|milestones|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done|close-goal|read> …\n'); return 1; }
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
   if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
+  if (opt.goal === true) { stdout('board-gh: --goal requires a value\n'); return 1; }
   if (verb === 'read') {
     const b = readBoard(gh, cfg);
     if (opt.goal) b.goals = b.goals.filter(g => g.lane === String(opt.goal).toUpperCase());
@@ -115,9 +139,9 @@ function main(argv, deps = {}) {
   }
   const commonDir = deps.commonDir || require('../hooks/lib/config').resolveRepoKey(cwd);
   if (!commonDir) { stdout('board-gh: not inside a git repository.\n'); return 1; }
-  return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg,
-    readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto });
+  return require('./board-gh-write').write({ verb, pos: pos.slice(1), opt, cfg, gh, stdout, cwd, commonDir, lockCfg: deps.lockCfg, env,
+    readBoard, bodyOf, MARK, STATUS_OPTS, EXEC_RECIPES, openJournal, withLock, crypto });
 }
 
-module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, loadCfg, MARK, STATUS_OPTS };
+module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS, RECIPES, EXEC_RECIPES };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

@@ -22,6 +22,7 @@ lands in this exact format at the top of the goal's worklog
     metric:  <the number that moves + how it is measured>
     done:    <machine-checkable condition>
     domains: <contract domains this will touch>
+    feature: <primary domain — the Project's Feature options are the contract domains; add-goal reads this line>
     kill:    <when to stop pouring effort in>
 
 ## Shaping route (operator's named tool always wins)
@@ -52,21 +53,23 @@ Native fallback — exactly three questions, one at a time:
 
 1. Pick the milestone — exactly one question: run
    `node "<plugin>/scripts/board-gh.js" milestones` and offer the open
-   ones (`C<n> …` first, then `backlog`). Milestones are the operator's;
+   ones (`M<n> …` first — legacy `C<n>` also sorts — then `backlog`). Milestones are the operator's;
    never create one. Write the BRIEF to `tmp/worklogs/_brief.md` first.
 2. Register: `add-goal <milestone#|backlog|none> "<name>" --brief tmp/worklogs/_brief.md`
-   prints the lane `G<n>` (the goal issue's number — unique, never
-   reused). Rename the worklog to `tmp/worklogs/G<n>-<name>.md`; the
+   prints the goal id `G<n>` (the goal issue's number — unique, never
+   reused). The script reads `feature:` from the brief and sets the goal's Feature; a brief without it is refused when the Project has a Feature field.
+   Rename the worklog to `tmp/worklogs/G<n>-<name>.md`; the
    goal is `G<n> · <name>` everywhere from here on. Prefer a short
    code-like name (2-6 chars). Create `tmp/worklogs/` and `docs/adr/`
    now if missing. No `.orch/board.json` → stop, point to `/orch:board init`.
 3. Seed the route — one call per known BRIEF step:
-   `add-item G<n> "<step>" [--bucket Now|Next|Later] [--pipeline <option>] [--feature <option>] [--outcome "<next>"] [--gate "<LABEL>"]`
+   `add-item G<n> "<step>" [--bucket Now|Next|Later] [--pipeline <option>] [--feature <domain>] [--outcome "<next>"] [--gate "<LABEL>"] [--accept "<criterion>"] [--recipe <name>]`
+   Always create at least one step — a small goal's single step is its `gate:` item, and its `--recipe` comes from the shaping table (`fast` for clear+small, `debug` for a bug).
+   `--accept` is the step's acceptance criterion (the last step's is the BRIEF's `done:`); `--recipe` is one of `tdd | iterate | debug | cleanup | fast` (execution recipes only — `spec`/`research` belong to shaping, never to a step); `add-item` assigns `step: S<j>` itself.
+   Items inherit the goal's Feature; pass `--feature <domain>` only when a step crosses into another domain.
+   `--pipeline` = the Project's own options, omitted when unsure.
    — `--gate` on the done-condition item (its completion closes the
-   goal); first steps `--bucket Now`, the rest `Next`; `--pipeline` /
-   `--feature` = the Project's own options (`.orch/board.json` →
-   `optionIds`), picked by judgment from the step text, omitted when
-   unsure. Owner actions (merge clicks, sign-offs):
+   goal); first steps `--bucket Now`, the rest `Next`. Owner actions (merge clicks, sign-offs):
    `add-item G<n> "<action>" --you`. Buckets are the Project's
    `Priority` options — never invent one.
 4. Classify the `domains:` line against the contract now — if any part is

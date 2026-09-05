@@ -49,6 +49,8 @@ function createSelect(gh, project, name, opts, say, dry) {
 function init({ opt, cwd, gh, stdout }) {
   const dry = !!opt['dry-run'];
   const say = s => stdout(s + '\n');
+  if (opt.project === true) { say('init: --project requires a value'); return 1; }
+  if (opt.owner === true) { say('init: --owner requires a value'); return 1; }
   const { owner: repoOwner, repo } = remoteRepo(cwd);
   const owner = typeof opt.owner === 'string' ? opt.owner : repoOwner;
   const title = `${repo} · orch board`;
@@ -91,8 +93,15 @@ function init({ opt, cwd, gh, stdout }) {
   const priority = existingPriority || createSelect(gh, project, 'Priority', DEFAULT_BUCKETS, say, dry);
   if (existingPriority && !existingPriority.options.length) { say('init: Priority field has no options — add at least one in the Project settings.'); return 1; }
   const doms = domains(cwd);
-  const pipeline = byName('Pipeline') || createSelect(gh, project, 'Pipeline', doms.length ? doms : ['general'], say, dry);
-  const feature = byName('Feature') || null;
+  // Pipeline is pass-through (operator's meaning): absent → one option so the field exists.
+  const pipeline = byName('Pipeline') || createSelect(gh, project, 'Pipeline', ['general'], say, dry);
+  // Feature options ARE the contract's domain names (spec d.18). Non-adopt: seed
+  // when absent. Adopt: never create fields — hint instead.
+  let feature = byName('Feature') || null;
+  if (!feature) {
+    if (adopted) say('init: no Feature field on the adopted project — add one whose options are your contract domain names, then run `sync-features`');
+    else if (doms.length) feature = createSelect(gh, project, 'Feature', doms, say, dry);
+  }
 
   const existing = new Set((gh.rest('GET', `repos/${repoOwner}/${repo}/labels?per_page=100`) || []).map(l => l.name));
   for (const [name, color] of Object.entries(LABELS)) {
@@ -114,4 +123,4 @@ function init({ opt, cwd, gh, stdout }) {
   return 0;
 }
 
-module.exports = { init, STATUS_OPTS, DEFAULT_BUCKETS };
+module.exports = { init, Q, optInput, domains, STATUS_OPTS, DEFAULT_BUCKETS };

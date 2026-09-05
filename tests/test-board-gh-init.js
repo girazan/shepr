@@ -35,7 +35,7 @@ function fakeGh(state) {
       throw new Error('unhandled ' + m + ' ' + p);
     } };
 }
-function run(argv, gh) { let out = ''; const code = main(argv, { gh, cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; } }); return { code, out }; }
+function run(argv, gh, extra = {}) { let out = ''; const code = main(argv, { gh, cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, env: {}, ...extra }); return { code, out }; }
 const CFGP = path.join(CWD, '.orch', 'board.json');
 const ALL_LABELS = ['orch:goal', 'orch:item', 'orch:you', 'orch:blocked', 'orch:needs_attention'];
 const STATUS4 = () => ['Todo', 'In progress', 'In review', 'Done'].map((nm, i) => ({ id: 's' + i, name: nm }));
@@ -51,8 +51,9 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   check('project created and recorded', cfg.projectId === 'PVT_new' && cfg.projectNumber === 9 && cfg.owner === 'istart-dev' && cfg.repo === 'orch');
   check('Status gained In review, kept existing', st.fields[0].options.map(o => o.name).join() === 'Todo,In Progress,Done,In review');
   check('Priority created with Now/Next/Later when absent', st.fields.some(f => f.name === 'Priority' && f.options.map(o => o.name).join() === 'Now,Next,Later'));
-  check('Pipeline created from contract domains when absent', st.fields.some(f => f.name === 'Pipeline' && f.options.map(o => o.name).join() === 'numerics,hmi'));
-  check('optionIds recorded: canonical status names, priority, pipeline; feature null', cfg.optionIds.status['In review'] === 'F_S3' && cfg.optionIds.status['In progress'] === 'F_S1' && cfg.optionIds.priority.Now && cfg.optionIds.pipeline.numerics && cfg.fieldIds.feature === null);
+  check('Pipeline created with `general` when absent (no longer seeded from domains)', st.fields.some(f => f.name === 'Pipeline' && f.options.map(o => o.name).join() === 'general'));
+  check('Feature created from contract domains when absent (spec d.18)', st.fields.some(f => f.name === 'Feature' && f.options.map(o => o.name).join() === 'numerics,hmi') && cfg.fieldIds.feature === 'F_Feature' && cfg.optionIds.feature.numerics === 'feature0');
+  check('optionIds recorded: canonical status names, priority, pipeline', cfg.optionIds.status['In review'] === 'F_S3' && cfg.optionIds.status['In progress'] === 'F_S1' && cfg.optionIds.priority.Now && cfg.optionIds.pipeline.general);
   check('orch labels created (five, no bucket labels)', ALL_LABELS.every(l => st.labels.includes(l)) && !st.labels.some(l => l.startsWith('orch:bucket')));
   check('no milestone call ever', !gh.calls.some(c => /milestones/.test(c.p || '')));
   check('existing Status option colors preserved when adding In review', st.fields[0].options.find(o => o.name === 'Todo').color === 'GREEN' && st.fields[0].options.find(o => o.name === 'Todo').description === 'd');
@@ -82,6 +83,28 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   const gh = fakeGh(st);
   run(['init', '--project', '1'], gh);
   check('un-renamed Priority is used verbatim, never renamed', Object.keys(JSON.parse(fs.readFileSync(CFGP, 'utf8')).optionIds.priority).join() === 'P0,P1,P2' && noMut(gh));
+}
+// Adopt without a Feature field → no creation, a hint, feature null.
+{
+  const st = { projects: [{ id: 'PVT_pert', number: 1, title: 'Pertasim' }],
+    fields: [{ id: 'F_S', name: 'Status', options: STATUS4() }, { id: 'F_R', name: 'Priority', options: [{ id: 'r0', name: 'Now' }] }, { id: 'F_P', name: 'Pipeline', options: [{ id: 'p0', name: 'Authoring' }] }], labels: ALL_LABELS.slice() };
+  const gh = fakeGh(st);
+  const r = run(['init', '--project', '1'], gh);
+  check('adopt without Feature: no mutation, hint printed, feature null', r.code === 0 && noMut(gh) && /no Feature field/.test(r.out) && JSON.parse(fs.readFileSync(CFGP, 'utf8')).fieldIds.feature === null);
+}
+// sync-features adds missing domain options, keeps existing, rewrites board.json.
+{
+  const st = { projects: [{ id: 'PVT_pert', number: 1, title: 'Pertasim' }],
+    fields: [{ id: 'F_S', name: 'Status', options: STATUS4() }, { id: 'F_R', name: 'Priority', options: [{ id: 'r0', name: 'Now' }] }, { id: 'F_P', name: 'Pipeline', options: [{ id: 'p0', name: 'Authoring' }] },
+      { id: 'F_F', name: 'Feature', options: [{ id: 'f0', name: 'numerics', color: 'BLUE', description: 'd' }] }], labels: ALL_LABELS.slice() };
+  st.fields[3].options.push({ id: 'f9', name: 'legacy' });
+  const gh = fakeGh(st);
+  run(['init', '--project', '1'], gh);
+  const r = run(['sync-features'], gh);
+  const cfg = JSON.parse(fs.readFileSync(CFGP, 'utf8'));
+  check('sync-features adds hmi, keeps numerics with its color, lists unmapped', r.code === 0 && /added: hmi/.test(r.out) && /unmapped: legacy/.test(r.out) && st.fields[3].options.map(o => o.name).join() === 'numerics,legacy,hmi' && st.fields[3].options[0].color === 'BLUE' && cfg.optionIds.feature.hmi);
+  const r2 = run(['sync-features'], gh);
+  check('sync-features is idempotent', r2.code === 0 && /in sync/.test(r2.out));
 }
 // Adopt with Status missing a canonical option → hard stop, no mutation.
 {
@@ -126,6 +149,10 @@ const noMut = gh => !gh.calls.some(c => /create|update/.test(c.q || '') || c.m =
   const r = run(['init', '--project', '2', '--dry-run'], gh);
   check('dry-run detects empty Priority field', r.code === 1 && /no options/.test(r.out));
   check('dry-run with empty Priority writes no config', !fs.existsSync(CFGP));
+}
+{
+  const r = run(['init', '--project'], fakeGh({ projects: [], fields: [], labels: [] }));
+  check('bare init --project is refused', r.code === 1 && /--project requires a value/.test(r.out));
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
