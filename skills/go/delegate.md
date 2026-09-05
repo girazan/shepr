@@ -91,3 +91,44 @@ implementer attempted this; you own it now." A loop that survives two
 resumes usually means the implementer cannot see its own problem — fresh
 eyes and a capability bump in one move, before the operator has to hear
 about it.
+
+## Roled panes — env, marker, roster, handoff
+
+Every pane the Coordinator starts carries two env vars, set by the
+launcher (`herdr agent start <name> --env ORCH_ROLE=<role> --env
+ORCH_IDS=<ids>`; a native background agent gets them in its spawn env).
+`ORCH_ROLE` is a guardrail, not a credential (spec §6): the hooks keyed on
+it are ADVISORY and see direct tool calls only.
+
+    ORCH_ROLE=dev|architect|coordinator|reviewer
+    ORCH_IDS=M<n>.G<k>.S<j>        dev · `M<n>.G<k>` architect · `M<n>` coordinator
+
+The `session-start` hook turns them into the session marker
+`<git-common-dir>/orch/session-<sessionId>.json` (`{role, milestone, goal, step, startedAt}`)
+and exports `ORCH_SESSION_ID`. When focus moves, record it (the go skill
+does this on every pick): `node "<plugin>/scripts/session-marker.js" set --goal G<k> [--step S<j>]`.
+
+Pane names: `impl-G<k>-S<j>` (Dev, fresh per step), `arch-G<k>`
+(Architect), `coord` (Coordinator). Roster entry in
+`<git-common-dir>/orch/fleet.json` (v2 §3.1 shape plus the two role
+fields), written by the launcher at start and removed at teardown —
+INSTRUCTED until the v0.9 roster hooks ship; `orch review` writes and
+removes its own reviewer entry:
+
+    { "name": "impl-G142-S2", "lane": "G142", "role": "mid", "orchRole": "dev", "ids": "M53.G142.S2", "vehicle": "herdr", "status": "running", "ownerSessionId": "<id>", "agentId": "<pane id>", "brief": "tmp/worklogs/G142-HDS.md#brief-1", "createdAt": "<iso>", "lastSeen": "<iso>" }
+
+Handoff — every role writes one at exit, ≤40 lines: what changed · what
+is blocked · what was decided · the next role's first action. Under
+`ship: none` a Dev handoff ends with the exact commit command for the
+Director. Paths, by role:
+
+    tmp/handoffs/M<n>.G<k>.S<j>-dev.md
+    tmp/handoffs/M<n>.G<k>-architect.md
+    tmp/handoffs/M<n>-coordinator.md
+
+The `stop-handoff` hook refuses one Stop while a roled pane has edited
+since `startedAt` and no handoff is newer (ADVISORY; a reviewer's output
+is its slot file, it has no handoff). Handoffs are scratch —
+`tmp/handoffs/` is gitignored; the worklog is the record. Size budgets,
+also advisory at Stop: handoff ≤40 lines, plan section ≤300 lines and ≤7
+steps.
