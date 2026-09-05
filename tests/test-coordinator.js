@@ -60,5 +60,53 @@ const filesOf = g => C.filesOfDomains(LS, CONTRACT, C.domainsOf(g.brief));
   check('rule 5 compares files, not globs: overlapping globs with no common file do not collide', C.pick({ goals: ovl, named: 'G7', filesOf: g => g.lane === 'G7' ? ['docs/x.md'] : filesOf(g) }).pick.lane === 'G7');
 }
 
+// --- kill / capacity / pulse -----------------------------------------------------
+check('killCheck: "<n> sessions" trips at n dispatches', C.killCheck('kill: 3 sessions', 3).tripped === true && C.killCheck('kill: 3 sessions', 2).tripped === false);
+check('killCheck: prose kill lines are returned, never tripped by code', C.killCheck('kill: when the metric stops moving', 99).tripped === false && C.killCheck('kill: when the metric stops moving', 99).line === 'when the metric stops moving');
+const ROSTER = { delegates: [{ name: 'impl-G6-S1', status: 'running' }, { name: 'impl-G2-S3', status: 'reserved' }, { name: 'old', status: 'done' }, { name: 'gone', status: 'torn-down' }] };
+check('capacityCheck counts reserved+running only', C.capacityCheck(ROSTER, 6).count === 2 && C.capacityCheck(ROSTER, 2).full === true && C.capacityCheck(null).full === false);
+const T0 = Date.parse('2026-09-06T10:00:00Z');
+const AUDIT = [{ ts: '2026-09-06T09:00:00Z', by: 'hook' }, { ts: '2026-09-06T09:30:00Z', by: 'pulse', goal: 'G3', action: 'dispatch' }, { ts: '2026-09-06T09:40:00Z', by: 'pulse', goal: 'G3', action: 'await-dev' }];
+check('pulseAge: minutes since the last pulse line, null when none', C.pulseAge(AUDIT, T0) === 20 && C.pulseAge([{ ts: '2026-09-06T09:00:00Z', by: 'hook' }], T0) === null);
+
+// --- tick -------------------------------------------------------------------------
+const base = { contract: CONTRACT, lsFiles: LS, roster: ROSTER, audit: AUDIT, now: T0, capacity: 6, worklogOf: () => 'BRIEF\n', manifestsOf: () => [] };
+{
+  const t = C.tick({ ...base, goals: [goal('G3', 'ready', 'hmi')] });
+  check('tick: unrouted ready goal → route (branch + ROUTE line first)', t.action === 'route' && t.pick === 'G3' && t.step.step === 'S1' && t.step.recipe === 'tdd');
+  const t2 = C.tick({ ...base, goals: [goal('G3', 'ready', 'hmi')], worklogOf: () => 'BRIEF\nROUTE: lane:G3 · hmi · decide:ai · ship:commit · tier:mid · base:abc · review:single · approved:auto · 2026-09-06\n' });
+  check('tick: routed ready goal → dispatch', t2.action === 'dispatch' && t2.stale === 20);
+  check('tick: capacity full → wait-capacity', C.tick({ ...base, capacity: 2, goals: [goal('G3', 'ready', 'hmi')], worklogOf: () => 'ROUTE: lane:G3 ' }).action === 'wait-capacity');
+  check('tick: nothing eligible → idle', C.tick({ ...base, goals: [goal('G1', 'blocked', 'hmi')] }).action === 'idle');
+  const killed = C.tick({ ...base, audit: AUDIT.concat([{ ts: '2026-09-06T09:50:00Z', by: 'pulse', goal: 'G3', action: 'dispatch' }, { ts: '2026-09-06T09:55:00Z', by: 'pulse', goal: 'G3', action: 'dispatch' }]), goals: [goal('G3', 'ready', 'hmi')] });
+  check('tick: kill line tripped → kill, before anything else', killed.action === 'kill' && killed.kill.counted === 3);
+  check('tick: running goal → await-dev', C.tick({ ...base, goals: [goal('G6', 'running', 'shared', [{ issue: 9, step: 'S1', done: false, you: false, status: 'In progress' }])] }).action === 'await-dev');
+  const rev = [{ issue: 9, step: 'S1', done: false, you: false, status: 'In review' }];
+  check('tick: review with no manifest yet → await-gate', C.tick({ ...base, goals: [goal('G6', 'review', 'shared', rev)] }).action === 'await-gate');
+  const mf = (v, r) => ({ path: `docs/reviews/M53.G6.S1.R${r}.md`, text: `review: M53.G6.S1.R${r}\nverdict: ${v}\n` });
+  const vt = C.tick({ ...base, goals: [goal('G6', 'review', 'shared', rev)], manifestsOf: () => [mf('fail', 1), mf('pass', 2)] });
+  check('tick: review with a manifest → verdict, the highest round', vt.action === 'verdict' && vt.manifest.path.endsWith('R2.md'));
+  const rr = C.tick({ ...base, goals: [goal('G6', 'review', 'shared', rev)], manifestsOf: () => [mf('inconclusive', 1)], audit: AUDIT.concat([{ ts: '2026-09-06T09:59:00Z', by: 'pulse', goal: 'G6', action: 'verdict', manifest: 'docs/reviews/M53.G6.S1.R1.md' }]) });
+  check('tick: inconclusive already pulsed and attention cleared → gate-rerun', rr.action === 'gate-rerun');
+  check('tick: routed goal with no open step → merge-gate', C.tick({ ...base, goals: [goal('G6', 'ready', 'shared', [{ issue: 9, step: 'S1', done: true, you: false, status: 'Done' }])], worklogOf: () => 'ROUTE: lane:G6 ' }).action === 'merge-gate');
+  check('tick: YOU items are never a step', C.tick({ ...base, goals: [goal('G6', 'ready', 'shared', [{ issue: 9, step: 'S1', done: true, you: false }, { issue: 10, step: 'S2', done: false, you: true }])], worklogOf: () => 'ROUTE: lane:G6 ' }).action === 'merge-gate');
+}
+// main: tick prints JSON and appends {by:"pulse"}; --no-pulse does not.
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); fs.rmSync(SCRATCH, { recursive: true, force: true });
+  const CWD = path.join(SCRATCH, 'repo'); fs.mkdirSync(path.join(CWD, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(CWD, '.claude', 'orch.json'), JSON.stringify({ contract: CONTRACT, fleet: { capacity: 6 } }));
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), board: () => ({ goals: [goal('G3', 'ready', 'hmi')] }), lsFiles: () => LS, now: T0 };
+  let out = ''; const code = C.main(['tick'], { ...deps, stdout: s => { out += s; } });
+  const j = JSON.parse(out);
+  check('main tick: exit 0, JSON with action/pick/stale', code === 0 && j.action === 'route' && j.pick === 'G3' && j.stale === null);
+  const audit = fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  check('main tick: one pulse line {by:"pulse", goal, action, tick}', audit.length === 1 && audit[0].by === 'pulse' && audit[0].goal === 'G3' && audit[0].action === 'route' && audit[0].tick === new Date(T0).toISOString());
+  out = ''; C.main(['tick', 'G3', '--no-pulse'], { ...deps, stdout: s => { out += s; } });
+  check('main tick --no-pulse: no second line', fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').length === 1 && JSON.parse(out).pick === 'G3');
+  out = ''; const c2 = C.main(['tick'], { ...deps, board: () => { throw new Error('gh: HTTP 502'); }, stdout: s => { out += s; } });
+  check('main tick: board unreachable → exit 1, says so, no pulse', c2 === 1 && /board unreachable: gh: HTTP 502/.test(out) && fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').length === 1);
+}
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
