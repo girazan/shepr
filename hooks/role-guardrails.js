@@ -44,6 +44,17 @@ function refuse(reason, cfg) {
   process.exit(2);
 }
 
+// BRIEF block = from the first `BRIEF` line (else line 1) to the next blank
+// line — the copy the goal skill puts at the top of every worklog.
+function briefBlock(text) {
+  const lines = text.split(/\r?\n/);
+  let s = lines.findIndex(l => /^BRIEF\b/.test(l));
+  if (s < 0) s = 0;
+  let e = s;
+  while (e < lines.length && lines[e].trim() !== '') e++;
+  return lines.slice(s, e).filter(l => l.trim() !== '');
+}
+
 try {
   if (isWrite && role === 'reviewer' && !under('docs/reviews')) {
     refuse(`ORCH_ROLE=reviewer edits only docs/reviews/ — a reviewer never fixes what it finds; put the finding in the slot file (${rel}).`);
@@ -56,6 +67,26 @@ try {
     const focusWorklog = goal ? new RegExp(`^tmp/worklogs/${goal}-[^/]*\\.md$`) : /^tmp\/worklogs\/[^/]+\.md$/;
     const ok = under('tmp/handoffs') || under('docs/reviews') || rel === '.claude/orch.json' || focusWorklog.test(rel);
     if (!ok) refuse(`ORCH_ROLE=coordinator reads no code: tmp/handoffs/, docs/reviews/, .claude/orch.json and the focus goal's worklog${goal ? ` (${goal})` : ''} only — dispatch a Dev or Architect instead of reading ${rel}.`);
+  }
+  if (isWrite && role === 'architect' && !under('docs/adr') && !isWorklog) {
+    const cfg = loadConfig(j);
+    const domains = (cfg.contract && cfg.contract.domains) || {};
+    for (const [name, d] of Object.entries(domains)) {
+      if (d && Array.isArray(d.paths) && d.paths.some(p => typeof p === 'string' && globToRe(p).test(rel))) {
+        refuse(`ORCH_ROLE=architect writes no production code: ${rel} is domain "${name}" — plan it as a step (add-item) for a Dev; docs/adr/ and the worklog stay open.`, cfg);
+      }
+    }
+  }
+  if (isWrite && role === 'dev' && isWorklog) {
+    let current = null;
+    try { current = fs.readFileSync(path.resolve(root, file), 'utf8'); } catch { current = null; }
+    if (current !== null) {
+      const brief = briefBlock(current);
+      const touches = tool === 'Edit'
+        ? brief.some(line => String(j.tool_input.old_string || '').includes(line))
+        : briefBlock(String(j.tool_input.content || '')).join('\n') !== brief.join('\n');
+      if (touches) refuse(`ORCH_ROLE=dev changes no scope: the worklog's first block is the BRIEF — append to the ledger below it; a scope change is the Director's (${rel}).`);
+    }
   }
 } catch { process.exit(0); } // fail-open: a guardrail that crashes is no guardrail
 process.exit(0);
