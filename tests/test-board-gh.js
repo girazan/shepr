@@ -29,7 +29,7 @@ function fakeGh(handlers) {
 }
 function run(argv, gh, extra = {}) {
   let out = '';
-  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, env: {}, ...extra });
+  const code = main(argv, { gh, cwd: CWD, commonDir: COMMON, stdout: s => { out += s; }, lockCfg: { __repoLocked: false }, verify: () => ({ ok: true }), env: {}, ...extra });
   return { code, out };
 }
 const pi = (status, pipeline, priority, feature) => ({ nodes: [{ project: { id: 'PVT_1' }, fieldValues: { nodes: [
@@ -204,11 +204,17 @@ writeCfg(CFG);
   check('attention --clear: comment added', st.comments[140].some(c => c.body.startsWith('attention cleared')));
   b = JSON.parse(run(['read', '--json'], gh).out);
   check('read folds back to items\' own status (running) after clear', b.goals[0].status === 'running');
-  r = run(['done', String(n1)], gh);
+  r = run(['done', '--goal', 'G140', '--step', 'S1', String(n1)], gh);
   check('done → Status Done + closed', st.fields['PI_I_' + n1 + ':F_S'] === 's4' && st.issues[n1].state === 'closed');
+  r = run(['done', String(n2)], gh);
+  check('bare done <item#> is refused with the reason', r.code === 1 && /--goal G<n> --step S<j>/.test(r.out) && st.issues[n2].state === 'open');
+  r = run(['done', '--goal', 'G141', '--step', 'S2', String(n2)], gh);
+  check('done refuses an item that is not under --goal', r.code === 1 && /belongs to G140/.test(r.out));
+  r = run(['done', '--goal', 'G140', '--step', 'S9', String(n2)], gh);
+  check('done refuses a step that is not the item\'s step: line', r.code === 1 && /is step S2, not S9/.test(r.out));
   r = run(['close-goal', 'G140', '--evidence', 'iter 3 · G140 · 10 → 2'], gh);
   check('close-goal refuses while items are open', r.code === 1 && /open item/.test(r.out) && st.issues[140].state === 'open');
-  run(['done', String(n2)], gh); run(['done', String(ny)], gh);
+  run(['done', '--goal', 'G140', '--step', 'S2', String(n2)], gh); run(['done', '--goal', 'G140', '--step', 'S3', String(ny)], gh);
   r = run(['close-goal', 'G140'], gh);
   check('close-goal refuses without --evidence', r.code === 1 && /evidence/.test(r.out));
   r = run(['close-goal', 'G140', '--evidence', 'iter 3 · G140 · 10 → 2'], gh);
@@ -321,7 +327,7 @@ writeCfg(CFG);
   r = run(['add-goal', '49', 'empty', '--brief', BRIEF], gh); // add-goal→140, add-item→141, so this goal is 142
   r = run(['close-goal', 'G142', '--evidence', 'iter 1 · G142 · done'], gh);
   check('close-goal refuses a goal with no step', r.code === 1 && /no step/.test(r.out) && st.issues[142].state === 'open');
-  run(['done', String(s1)], gh);
+  run(['done', '--goal', 'G140', '--step', 'S1', String(s1)], gh);
   run(['close-goal', 'G140', '--evidence', 'iter 1 · G140 · done'], gh);
   r = run(['close-milestone', 'M53 · Ship the HMI', '--summary', 'shift ran alone'], gh);
   check('close-milestone by title closes when every goal is merged, appends closed/summary', r.code === 0 && m.state === 'closed' && /\nclosed: \d{4}-\d{2}-\d{2} · summary: shift ran alone$/.test(m.description) && /closed \(1 goals\)/.test(r.out));
@@ -393,7 +399,7 @@ writeCfg(CFG);
   check('add-item assigns step: S1 and writes accept:/recipe:', r.code === 0 && /\nstep: S1\n/.test(st.issues[n].body) && /\naccept: test-grammar passes\nrecipe: tdd\n<!-- opId:/.test(st.issues[n].body));
   r = run(['add-item', 'G140', 'second'], gh);
   check('next add-item gets S2', /\nstep: S2\n/.test(st.issues[Number(r.out.trim())].body));
-  run(['done', String(n)], gh);
+  run(['done', '--goal', 'G140', '--step', 'S1', String(n)], gh);
   r = run(['add-item', 'G140', 'third'], gh);
   check('step numbers are never reused (S3 after S1 closed)', /\nstep: S3\n/.test(st.issues[Number(r.out.trim())].body));
   for (let i = 0; i < 45; i++) run(['add-item', 'G140', 'bulk ' + i], gh); // past the 40-item read window
@@ -443,6 +449,30 @@ writeCfg(CFG);
   run(['add-item', 'G140', 'trigger replay again'], gh);
   const pre = Object.values(st.issues).find(i => i.title === 'pre-upgrade goal');
   check('replayed pre-upgrade add-goal sets Feature from the body feature: line', pre && st.fields['PI_' + pre.node_id + ':F_F'] === 'f1');
+}
+// --- read: merged goals are unverified when no passing round covers their final range -----
+{
+  const gh = fakeGh([[/subIssues/, () => GOALS]]);
+  const seen = [];
+  const j = JSON.parse(run(['read', '--json'], gh, { verify: n => { seen.push(n); return { ok: false, miss: `(c) no passing step manifest for G${n} at HEAD` }; } }).out);
+  const g99 = j.goals.find(g => g.lane === 'G99'), g142 = j.goals.find(g => g.lane === 'G142');
+  check('merged goal without a passing manifest is unverified with the miss', g99.unverified === true && /no passing step manifest for G99/.test(g99.unverifiedReason));
+  check('open goals are never unverified; the verifier runs only for merged goals', g142.unverified === false && seen.join() === '99');
+  const j2 = JSON.parse(run(['read', '--json'], gh, { verify: () => ({ ok: true }) }).out);
+  check('merged goal with a covering passing round is verified', j2.goals.find(g => g.lane === 'G99').unverified === false);
+}
+// --- add-goal: domains: must name contract domains ------------------------------------------
+{
+  const { st, gh } = ghStore();
+  const BAD = path.join(SCRATCH, 'brief-bad.md');
+  fs.writeFileSync(BAD, 'BRIEF\ngoal: x\nmetric: m\ndone: d\ndomains: numerics, ghost\nfeature: numerics\nkill: k\n');
+  const lockCfg = { __repoLocked: false, contract: { domains: { numerics: { paths: ['src/**'], decide: 'ai', ship: 'commit' } } } };
+  let r = run(['add-goal', '49', 'bad', '--brief', BAD], gh, { lockCfg });
+  check('add-goal refuses a domains: name absent from the contract', r.code === 1 && /ghost/.test(r.out) && !Object.values(st.issues).some(i => i.title === 'bad'));
+  r = run(['add-goal', '49', 'good', '--brief', BRIEF], gh, { lockCfg });
+  check('add-goal accepts domains: that name contract domains', r.code === 0);
+  r = run(['add-goal', '49', 'nocontract', '--brief', BAD], gh);
+  check('no contract → domains: not validated (nothing to validate against)', r.code === 0);
 }
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();
