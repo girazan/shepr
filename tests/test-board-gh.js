@@ -43,14 +43,17 @@ fs.rmSync(path.join(CWD, '.orch', 'board.json'), { force: true });
 // --- milestones ---------------------------------------------------------------
 writeCfg(CFG);
 {
-  const gh = fakeGh([[/GET repos\/o\/r\/milestones/, () => [
+  const gh = fakeGh([[/GET repos\/o\/r\/milestones\?state=open/, () => [
     { number: 52, title: 'backlog', open_issues: 4, closed_issues: 25 },
     { number: 50, title: 'C2 Authoring tools ready', open_issues: 8, closed_issues: 2 },
+    { number: 55, title: 'M3 · October target', open_issues: 1, closed_issues: 0 },
     { number: 49, title: 'C1 SHU-HDS operable', open_issues: 60, closed_issues: 9 },
     { number: 30, title: 'v0.9.1', open_issues: 0, closed_issues: 7 } ]]]);
-  const r = run(['milestones'], gh);
-  const j = JSON.parse(r.out);
-  check('milestones: C<n> numeric first, then backlog, then rest', j.map(c => c.number).join() === '49,50,52,30' && j[0].open === 60);
+  const j = JSON.parse(run(['milestones'], gh).out);
+  check('milestones: M<n>/C<n> numeric first, then backlog, then rest', j.map(c => c.number).join() === '49,50,55,52,30' && j[0].open === 60);
+  const { milestoneRank } = require('../scripts/board-gh');
+  check('milestoneRank: M3 → 3, C2 → 2, backlog → 1e6, other → 1e7',
+    milestoneRank('M3 · October target') === 3 && milestoneRank('C2 Authoring') === 2 && milestoneRank('backlog') === 1e6 && milestoneRank('v0.9.1') === 1e7);
 }
 
 // --- read folds goal status -----------------------------------------------------

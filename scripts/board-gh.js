@@ -89,10 +89,21 @@ function readBoard(gh, cfg) {
   return { goals, buckets: cfg.buckets };
 }
 
+// M<n> is the milestone grammar (spec §2); C<n> is the legacy prefix and
+// still ranks — orch never renames an existing milestone.
+function milestoneRank(t) { const m = /^[MC](\d+)\b/.exec(t || ''); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; }
+function pagedMilestones(gh, R, state) { // REST pages at 100; a repo can have more
+  const out = [];
+  for (let page = 1; ; page++) {
+    const p = gh.rest('GET', `${R}/milestones?state=${state}&per_page=100&page=${page}`) || [];
+    out.push(...p);
+    if (p.length < 100) break;
+  }
+  return out;
+}
 function listMilestones(gh, cfg) {
-  const ms = gh.rest('GET', `repos/${cfg.owner}/${cfg.repo}/milestones?state=open&per_page=100`) || [];
-  const rank = t => { const m = /^C(\d+)\b/.exec(t); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; };
-  return ms.map(m => ({ number: m.number, title: m.title, open: m.open_issues, closed: m.closed_issues, r: rank(m.title) }))
+  const ms = pagedMilestones(gh, `repos/${cfg.owner}/${cfg.repo}`, 'open');
+  return ms.map(m => ({ number: m.number, title: m.title, open: m.open_issues, closed: m.closed_issues, r: milestoneRank(m.title) }))
     .sort((a, b) => a.r - b.r || a.number - b.number).map(({ r, ...m }) => m);
 }
 
@@ -119,5 +130,5 @@ function main(argv, deps = {}) {
     readBoard, bodyOf, MARK, STATUS_OPTS, openJournal, withLock, crypto });
 }
 
-module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, loadCfg, MARK, STATUS_OPTS };
+module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
