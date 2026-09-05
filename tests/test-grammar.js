@@ -128,5 +128,20 @@ const rg = R('skills/go/recipes/review-goal.md');
 check('review-goal is one page with the tri-state verdict grammar', rg.split('\n').length <= 45 && rg.includes('verdict: pass | fail | inconclusive'));
 check('review-goal is read-only, runs tests, fixes nothing', rg.includes('git show <sha>:<path>') && rg.includes('EXISTS → SUBSTANTIVE → WIRED') && rg.includes('You fix nothing you find.'));
 
+// 11. Skill routing — the §9 table lives in scripts/tools.js (STAGES) and skills/setup/tools.md; setup pins, goal/milestone route by stage.
+const { STAGES, TRACKER_PUBLISHING } = require('../scripts/tools');
+const toolsDoc = R('skills/setup/tools.md');
+for (const [stage, , chosen, native] of STAGES) check(`tools.md carries stage ${stage}, its native fallback${chosen ? ' and chosen skill' : ''}`, toolsDoc.includes(`\`${stage}\``) && toolsDoc.includes(native) && (!chosen || toolsDoc.includes(`\`${chosen}\``)));
+check('tools.md states the resolution rule once', toolsDoc.includes('`tools[stage]` if set and installed at the pinned version → the skill; else the native fallback, and the ledger says which.'));
+check('tools.md names the tracker-publishing skills and the local tracker', TRACKER_PUBLISHING.every(x => toolsDoc.includes(`\`${x}\``)) && toolsDoc.includes('# Issue tracker: Local Markdown'));
+check('tools.md says no hook reads the map', toolsDoc.includes('no hook reads this map'));
+check('setup loads tools.md and pins with tools.js pin --write', setup.includes('tools.md') && setup.includes('tools.js" list') && setup.includes('tools.js" pin') && setup.includes('--write'));
+check('setup offers find-skills only when installed, native first', setup.includes('find-skills') && setup.includes('native first'));
+check('setup requires the local-markdown tracker for tracker-publishing skills', setup.includes('# Issue tracker: Local Markdown') && setup.includes('/setup-matt-pocock-skills'));
+check('goal routes shaping by recipe and stage', goal.includes('recipes/spec.md') && goal.includes('recipes/research.md') && goal.includes('tools.js" check'));
+check('goal says shaping recipes never go on a step', goal.includes('Shaping recipes never go on a step.'));
+check('milestone define routes through the define-milestone stage', milestone.includes('`define-milestone`') && milestone.includes('tools.js" check'));
+check('orch never routes to superpowers', ![goal, setup, milestone, go, work].some(t => /superpowers:/.test(t)));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
