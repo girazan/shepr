@@ -13,6 +13,7 @@ const work = R('skills/go/work.md');
 const loop = R('skills/go/loop.md');
 const renderer = R('scripts/board-html.js');
 const milestone = R('skills/milestone/SKILL.md'); const setup = R('skills/setup/SKILL.md');
+const readme = R('README.md');
 
 let pass = 0, fail = 0, n = 0;
 function check(name, cond) {
@@ -88,6 +89,9 @@ check('setup asks for review-alt', R('skills/setup/SKILL.md').includes('review-a
 
 // 8. setup syncs Feature options on domain change.
 check('setup runs sync-features after a domain edit', setup.includes('sync-features'));
+
+// 9. Five commands, stated once in README.
+check('README lists five commands', readme.includes('/orch:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
 
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

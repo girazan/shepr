@@ -57,16 +57,17 @@ One file, `.claude/orch.json`, at your repo root:
   `low`, `mid`, `high`, and `frontier` (never mixed with other terms). Locking a tiered contract requires locking
   the models map: a locked `contract` now replaces the bundle `{contract, models}` wholesale.
 
-## ⌨️ Four commands — three act, one looks
+## ⌨️ Five commands — three act on work, one on scope, one looks
 
 | Command | When | What |
 |---|---|---|
 | 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, ratifies ADRs |
+| 🏁 `/orch:milestone` | scope, Director only | `define` (three questions → `M<n> · <objective>` with `target:` and `done:`), `split` (proposes goals from the Feature options, creates nothing), `prioritize` (`move G<n> …`), `close` (all goals merged, summary acknowledged). Refuses in any pane with `ORCH_ROLE` — a guardrail, not a credential. |
 | 🎯 `/orch:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
 | 🚦 `/orch:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says |
-| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/orch:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Reads the Project's existing `Priority` options as the buckets — rename `P0/P1/P2` → `Now/Next/Later` in the Project settings first if you want those names. Fsyncs journal. Read-only after; requires GitHub. `html` for shareable page. |
+| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/orch:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Reads the Project's existing `Priority` options as the buckets — rename `P0/P1/P2` → `Now/Next/Later` in the Project settings first if you want those names. Fsyncs journal. Read-only after, plus `sync` (mirrors Feature options from the contract); requires GitHub. `html` for shareable page. |
 
-There is no bare `/orch` — always one of these four. [Architecture diagram →](docs/orch-architecture.html)
+There is no bare `/orch` — always one of these five. [Architecture diagram →](docs/orch-architecture.html)
 
 ## 🧱 Eight hooks — enforced, not remembered
 
@@ -122,8 +123,8 @@ never silently disable a guard.
 
 ## 📖 Glossary
 
-**goal** one ongoing piece of work (workstream), an orch:goal issue `G<n>` on the board · **milestone** GitHub's top-level Milestone set by operator (`C<n> …`, never created by orch) · **board** the status
-table, one goal per lane (kanban, GitHub Issues + Projects v2) · **worklog** a goal's running notebook ·
+**goal** one finite deliverable (`G<n>` issue), an orch:goal issue on the board · **milestone** GitHub's top-level Milestone: `M<n> · <objective>` with `target:` and `done:` in its description — created only by the Director via `/orch:milestone`; legacy `C<n>` titles still sort · **feature** the Project's Feature options are the contract's domain names — the workstream a goal belongs to, never part of an id · **board** the status
+table, one row per goal (kanban, GitHub Issues + Projects v2) · **worklog** a goal's running notebook ·
 **ledger line** one-line summary of one work round · **review ladder**
 staged checking, cheap → expensive (quality gates) · **merge gate** the
 three questions before keeping a change (definition of done) · **noise
