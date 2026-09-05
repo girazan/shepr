@@ -73,7 +73,22 @@ function latestComment(gh, cfg, number, prefix) {
   return null;
 }
 
-function readBoard(gh, cfg) {
+function defaultVerify(cwd) {
+  // The close-goal lint over git + the locked contract: a merged goal whose
+  // last passing round does not cover its final range is `unverified` (spec §4).
+  const { execFileSync } = require('child_process');
+  const { loadConfig } = require('../hooks/lib/config');
+  const { lint } = require('../hooks/lib/evidence-lint');
+  let root = null;
+  try { root = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch {}
+  if (!root) return () => ({ ok: false, miss: 'not inside a git repository' });
+  const cfg = loadConfig({ cwd: root });
+  if (!cfg.contract || !cfg.contract.domains || !Object.keys(cfg.contract.domains).length) return () => ({ ok: false, miss: 'no contract' });
+  const git = args => execFileSync('git', ['-C', root, '-c', 'core.quotePath=false', ...args], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  return n => { try { return lint({ git, contract: cfg.contract, models: cfg.models || {}, verb: { kind: 'close', goal: n } }); } catch (e) { return { ok: false, miss: String(e.message).split('\n')[0] }; } };
+}
+
+function readBoard(gh, cfg, verify) {
   const d = gh.graphql(READ_QUERY, { owner: cfg.owner, repo: cfg.repo });
   const goals = d.repository.issues.nodes.map(g => {
     const items = g.subIssues.nodes.map(i => {
@@ -88,9 +103,11 @@ function readBoard(gh, cfg) {
     const forFold = items.map(i => ({ labels: i.labels, status: i.status,
       blockerComment: i.labels.includes('orch:blocked') ? latestComment(gh, cfg, i.issue, 'blocked:') : null }));
     const { status, blocker } = foldStatus({ state: g.state.toLowerCase(), labels: g.labels.nodes.map(l => l.name) }, forFold);
+    const v = status === 'merged' && verify ? verify(g.number) : null;
     return { lane: `G${g.number}`, issue: g.number, name: g.title, milestone: g.milestone ? { number: g.milestone.number, title: g.milestone.title } : null,
       bucket: fieldOf(g, cfg, 'Priority'), feature: fieldOf(g, cfg, 'Feature'),
-      status, blocker, brief: stripOpId(g.body).join('\n'), updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
+      status, blocker, unverified: !!(v && !v.ok), ...(v && !v.ok ? { unverifiedReason: v.miss } : {}),
+      brief: stripOpId(g.body).join('\n'), updated: g.updatedAt, items: items.map(({ labels, ...rest }) => rest) };
   }).sort((a, b) => {
     // Spec §4 one rule: Priority bucket across milestones (unset last) → milestone (none last) → issue.
     const bi = x => (x.bucket ? cfg.buckets.indexOf(x.bucket) : cfg.buckets.length);
@@ -125,14 +142,14 @@ function main(argv, deps = {}) {
   const env = deps.env || process.env;
   const { pos, opt } = parseArgs(argv);
   const verb = pos[0];
-  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done|close-goal|read> …\n'); return 1; }
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
   if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
   if (opt.goal === true) { stdout('board-gh: --goal requires a value\n'); return 1; }
   if (verb === 'read') {
-    const b = readBoard(gh, cfg);
+    const b = readBoard(gh, cfg, deps.verify || defaultVerify(cwd));
     if (opt.goal) b.goals = b.goals.filter(g => g.lane === String(opt.goal).toUpperCase());
     stdout(JSON.stringify(b, null, opt.json ? 0 : 2) + '\n');
     return 0;
@@ -143,5 +160,5 @@ function main(argv, deps = {}) {
     readBoard, bodyOf, MARK, STATUS_OPTS, EXEC_RECIPES, openJournal, withLock, crypto });
 }
 
-module.exports = { main, parseBody, bodyOf, readBoard, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS, RECIPES, EXEC_RECIPES };
+module.exports = { main, parseBody, bodyOf, readBoard, defaultVerify, listMilestones, pagedMilestones, milestoneRank, loadCfg, MARK, STATUS_OPTS, RECIPES, EXEC_RECIPES };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

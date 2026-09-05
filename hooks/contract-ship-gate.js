@@ -8,9 +8,11 @@
 // oversized payload. Inactive (no contract key, or valid empty domains)
 // is the only silent pass-through. Every other exit writes an audit line.
 'use strict';
+const path = require('path');
 const { execFileSync } = require('child_process');
-const { readStdin, loadConfig, loadLock, appendAudit, AUDIT_REL } = require('./lib/config');
+const { readStdin, loadConfig, loadLock, appendAudit, AUDIT_REL, resolveRepoKey } = require('./lib/config');
 const { globToRe } = require('./lib/contract');
+const { isEvidence, lint } = require('./lib/evidence-lint');
 
 const RANK = { none: 0, commit: 1, push: 2 };
 // Deny-by-default: only local/read commands escape the gate untouched.
@@ -22,6 +24,7 @@ const READ_ALLOW = new Set(['status', 'log', 'diff', 'show', 'fetch', 'add', 'rm
 
 const { j, oversized } = readStdin();
 const cmd = (j && j.tool_input && (j.tool_input.command || '')) || '';
+const cwd = (j && j.cwd) || process.cwd();
 
 // Whole-command lexer: a quoted span becomes ONE token carrying its raw
 // content (a quoted refspec/message is seen, never deleted or split on).
@@ -79,7 +82,7 @@ const CD_RE = /^(cd|chdir|pushd|popd|sl|set-location|push-location)$/i;
 const GIT_RE = /(^|[\\/])git(\.exe)?$/i;
 
 function classify(command) {
-  const res = { action: 0, denied: null, retarget: false, pushSegs: [] };
+  const res = { action: 0, denied: null, retarget: false, pushSegs: [], worktreeSegs: [] };
   const hasEnvRetarget = /GIT_DIR|GIT_WORK_TREE/.test(command);
   const segs = toSegments(command);
   // Retarget-token scan is command-wide, not per-segment: `{ cd ../victim
@@ -115,6 +118,10 @@ function classify(command) {
     } else if (sub === 'push') {
       res.action = Math.max(res.action, 2);
       res.pushSegs.push(t.slice(subIdx + 1)); // EVERY push segment, not just the last
+    } else if (sub === 'worktree') {
+      // Allowlisted only for the script's own detached test worktrees under
+      // <common-dir>/orch/wt/ (spec §5) — resolved with repo context below.
+      res.worktreeSegs.push(seg.slice(subIdx + 1).map(x => x.text));
     } else {
       // Unknown, aliased, or history-writing subcommand.
       res.denied = res.denied || `git ${sub}`;
@@ -122,6 +129,19 @@ function classify(command) {
   }
   if ((res.action > 0 || res.denied) && (hasEnvRetarget || hasCd)) res.retarget = true;
   return res;
+}
+
+function worktreeOk(segs, cwdArg) {
+  if (!segs.length) return true;
+  const common = resolveRepoKey(cwdArg);
+  if (!common) return false;
+  const prefix = path.join(common, 'orch', 'wt') + path.sep;
+  const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
+  return segs.every(a => {
+    const target = (a[0] === 'add' && a[1] === '--detach' && a.length === 4) ? a[2]
+      : (a[0] === 'remove' && (a.length === 2 || (a.length === 3 && a[1] === '--force'))) ? a[a.length - 1] : null;
+    return !!target && fold(path.resolve(cwdArg, target)).startsWith(fold(prefix));
+  });
 }
 
 function git(cwdArg, args) {
@@ -141,37 +161,58 @@ if (loadLock().corrupt) {
   process.exit(2);
 }
 
-// board-gh close-goal (spec §4.1 "Evidence-before-done" / §2.3 at v0.10):
-// evidence must already be committed — a ledger line naming the goal in
-// that goal's worklog AT HEAD. Git only; no network.
+// board-gh close-goal / done --goal --step — the §5 evidence lint. Judged on
+// repo state at HEAD plus the locked contract: git only, no network. With
+// no lock entry for this repo the lint is ADVISORY (audit line, no block —
+// spec §6 last row); today's close-goal ledger check stays and runs first.
 const CG = cmd.match(/board-gh(?:\.js)?\s+close-goal\s+(G\d+)\b/i);
-if (CG) {
-  const lane = CG[1].toUpperCase();
-  const cwd0 = (j && j.cwd) || process.cwd();
+const DN = !CG && cmd.match(/board-gh(?:\.js)?\s+done\b([^;&|]*)/i);
+if (CG || DN) {
   let root0 = null;
-  try { root0 = git(cwd0, ['rev-parse', '--show-toplevel']).trim(); } catch {}
-  const cfg0 = loadConfig({ cwd: root0 || cwd0 });
+  try { root0 = git(cwd, ['rev-parse', '--show-toplevel']).trim(); } catch {}
+  const cfg0 = loadConfig({ cwd: root0 || cwd });
   const active = cfg0.contract && cfg0.contract.domains && Object.keys(cfg0.contract.domains).length;
   if (active && root0) {
-    const block = reason => { appendAudit(root0, { action: 'close-goal', lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
-    let files = [];
-    try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
-    const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
-    if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
-    let text = '';
-    try { text = git(root0, ['show', `HEAD:${wl}`]); }
-    catch { block(`close-goal: cannot read ${wl} at HEAD`); }
-    if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text)) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
-    appendAudit(root0, { action: 'close-goal', lane, verdict: 'ALLOW', by: 'hook' });
+    let verb, lane;
+    if (CG) { lane = CG[1].toUpperCase(); verb = { kind: 'close', goal: Number(lane.slice(1)) }; }
+    else {
+      const rest = DN[1];
+      const gm = /--goal\s+G(\d+)\b/i.exec(rest), sm = /--step\s+S(\d+)\b/i.exec(rest);
+      const im = /(?:^|\s)(\d+)(?=\s|$)/.exec(rest.replace(/--goal\s+\S+|--step\s+\S+/gi, ' '));
+      if (!gm || !sm || !im) {
+        appendAudit(root0, { action: 'done', verdict: 'BLOCK', reason: 'done: --goal G<n> --step S<j> <item#> required', by: 'hook' });
+        console.error('BLOCKED (orch ship-gate): use `board-gh done --goal G<n> --step S<j> <item#>` — the hook cannot map an item number to ids offline (spec §5).');
+        process.exit(2);
+      }
+      lane = `G${gm[1]}`; verb = { kind: 'done', goal: Number(gm[1]), step: Number(sm[1]), item: Number(im[1]) };
+    }
+    const action = CG ? 'close-goal' : 'done';
+    const block = reason => { appendAudit(root0, { action, lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
+    if (CG) {
+      let files = [];
+      try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
+      const wl = files.find(f => new RegExp(`^tmp/worklogs/${lane}-.*\\.md$`, 'i').test(f));
+      if (!wl) block(`close-goal: worklog for ${lane} is not committed at HEAD`);
+      let text = '';
+      try { text = git(root0, ['show', `HEAD:${wl}`]); }
+      catch { block(`close-goal: cannot read ${wl} at HEAD`); }
+      if (!new RegExp(`^(iter|evidence:).*\\b${lane}\\b`, 'm').test(text)) block(`close-goal: no ledger line naming ${lane} in ${wl} at HEAD`);
+    }
+    let res;
+    try { res = lint({ git: args => git(root0, args), contract: cfg0.contract, models: cfg0.models || {}, verb }); }
+    catch (e) { res = { ok: false, miss: `lint error: ${String(e.message).split('\n')[0]}` }; }
+    if (res.ok) appendAudit(root0, { action, lane, verdict: 'ALLOW', lint: 'PASS', target: res.target, by: 'hook' });
+    else if (cfg0.__repoLocked) block(`${action}: evidence lint MISS ${res.miss}`);
+    else appendAudit(root0, { action, lane, verdict: 'ALLOW', lint: 'ADVISORY', reason: res.miss, by: 'hook' });
   }
 }
 
-const cls = cmd ? classify(cmd) : { action: 0, denied: null, retarget: false };
+const cls = cmd ? classify(cmd) : { action: 0, denied: null, retarget: false, worktreeSegs: [] };
+if (cls.worktreeSegs.length && !worktreeOk(cls.worktreeSegs, cwd)) cls.denied = cls.denied || 'git worktree (only `add --detach`/`remove` under <git-common-dir>/orch/wt/ — the review script\'s test worktrees)';
 if (!oversized && cls.action === 0 && !cls.denied) process.exit(0);
 
 // Only a gated action (or a denied one) reaches here — root resolution and
 // the full config load are deferred until they're actually needed.
-const cwd = (j && j.cwd) || process.cwd();
 let root = null;
 try { root = git(cwd, ['rev-parse', '--show-toplevel']).trim(); } catch {}
 
@@ -281,21 +322,7 @@ try {
         base = git(root, ['merge-base', 'HEAD', def]).trim();
       } catch {}
     }
-    if (!base) {
-      // First push of a branch whose local origin/HEAD symref was never
-      // set (no prior clone/`remote set-head`): ask the remote directly.
-      // Read-only (ls-remote) — a gate never fetches to establish a base.
-      try {
-        const out = git(root, ['ls-remote', '--symref', 'origin', 'HEAD']);
-        const m = out.match(/ref:\s*refs\/heads\/(\S+)\s+HEAD/);
-        if (m) {
-          const def = `origin/${m[1]}`;
-          git(root, ['rev-parse', def]); // must already exist locally — no fetch
-          base = git(root, ['merge-base', 'HEAD', def]).trim();
-        }
-      } catch {}
-    }
-    if (!base) die("push base unresolvable (no upstream, no origin default) — the first push is the operator's.");
+    if (!base) die("push base unresolvable — no upstream and refs/remotes/origin/HEAD is not set locally; the operator runs `git remote set-head origin -a` once (a gate never talks to the remote).");
     files.push(...names(git(root, ['diff', `${base}..HEAD`, '--name-only'])));
   }
 } catch (e) {
@@ -316,10 +343,13 @@ let overall = 2, governing = null, offenders = [];
 for (const f of files) {
   const p = f.replace(/\\/g, '/');
   let grant = null, gDom = null;
+  // Built-in evidence grant (spec §5): reviews, worklogs, ADRs carry a
+  // `commit` floor before any domain is consulted; a domain may lift it.
+  if (isEvidence(p)) { grant = RANK.commit; gDom = 'evidence'; }
   for (const [name, d] of Object.entries(contract.domains)) {
-    if (d.paths.some(pat => globToRe(pat).test(p))) {
-      if (grant === null || RANK[d.ship] < grant) { grant = RANK[d.ship]; gDom = name; }
-    }
+    if (!d.paths.some(pat => globToRe(pat).test(p))) continue;
+    if (gDom === 'evidence') { if (RANK[d.ship] > grant) { grant = RANK[d.ship]; gDom = name; } }
+    else if (grant === null || RANK[d.ship] < grant) { grant = RANK[d.ship]; gDom = name; }
   }
   if (grant === null) { grant = 0; gDom = 'unmatched'; }
   if (governing === null || grant < overall) { overall = grant; governing = gDom; }

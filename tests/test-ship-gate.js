@@ -79,8 +79,8 @@ rmrf(SCRATCH);
 fs.mkdirSync(path.join(FAKEHOME, '.claude'), { recursive: true });
 fs.mkdirSync(REMOTE, { recursive: true });
 execFileSync('git', ['init', '--bare', REMOTE], { stdio: 'ignore' });
-// Bare remote's HEAD symref -> main, so `ls-remote --symref origin HEAD`
-// resolves the default branch without ever needing a local `remote set-head`.
+// Bare remote's HEAD symref -> main; the gate never asks the remote for it —
+// the first-push test sets origin/HEAD locally with `git remote set-head`.
 execFileSync('git', ['-C', REMOTE, 'symbolic-ref', 'HEAD', 'refs/heads/main'], { stdio: 'ignore' });
 fs.mkdirSync(REPO, { recursive: true });
 execFileSync('git', ['init', '-b', 'main', REPO], { stdio: 'ignore' });
@@ -95,7 +95,7 @@ g('commit', '-m', 'seed');
 g('remote', 'add', 'origin', REMOTE);
 g('push', '-u', 'origin', 'main');
 // Deliberately no `remote set-head` here — refs/remotes/origin/HEAD stays
-// absent locally so the ls-remote fallback test actually exercises that path.
+// absent locally so the first-push refusal actually exercises that path.
 
 const repoKey = resolveRepoKey(REPO);
 
@@ -231,6 +231,16 @@ check('git archive HEAD -> 2 (denied)', run('git archive HEAD').code === 2);
 check('git format-patch -1 -> 2 (denied)', run('git format-patch -1').code === 2);
 check('git clean -n -> 2 (denied)', run('git clean -n').code === 2);
 
+// Worktree allowlist (spec §5): only add --detach / remove under <common-dir>/orch/wt/.
+const WT = path.join(repoKey, 'orch', 'wt', 'M53.G142.S1.R1');
+check('git worktree add --detach <common>/orch/wt/<id> HEAD -> 0', run(`git worktree add --detach "${WT}" HEAD`).code === 0);
+check('git worktree remove <common>/orch/wt/<id> -> 0', run(`git worktree remove "${WT}"`).code === 0);
+check('git worktree remove --force <common>/orch/wt/<id> -> 0', run(`git worktree remove --force "${WT}"`).code === 0);
+check('git worktree add --detach elsewhere -> 2', run(`git worktree add --detach "${path.join(SCRATCH, 'elsewhere')}" HEAD`).code === 2);
+check('git worktree add (no --detach) under the prefix -> 2', run(`git worktree add "${WT}" HEAD`).code === 2);
+check('git worktree prune -> 2', run('git worktree prune').code === 2);
+check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.join(repoKey, 'orch', 'wt', '..', '..', 'x')}"`).code === 2);
+
 writeFile('docs/d34.md');
 g('add', 'docs/d34.md');
 check('34. blocked word inside commit MESSAGE is fine -> 0', run('git commit -m "revert the parser fix"').code === 0);
@@ -274,6 +284,30 @@ g('add', 'docs/d53.md'); g('commit', '-m', 'd53'); // unpushed, docs domain (pus
 check('53. push -u origin <current-branch> -> 0', run('git push -u origin main').code === 0);
 g('push');
 
+// Built-in evidence commit grant (spec §5): worklogs, reviews, ADRs are committable by any role,
+// matched before domains; a domain may lift it to push, never lower it.
+setCfg({ contract: { domains: { docs: { paths: ['docs/**'], decide: 'ai', ship: 'none' }, src: { paths: ['src/**'], decide: 'ai', ship: 'commit' } } } });
+writeFile('docs/reviews/M1.G1.S1.R1.md', 'review: M1.G1.S1.R1\n');
+g('add', 'docs/reviews/M1.G1.S1.R1.md');
+check('evidence under a ship:none domain -> commit 0 (built-in grant wins)', run('git commit -m manifest').code === 0);
+check('evidence under a ship:none domain -> push 2 (floor is commit; none does not lift)', run('git push').code === 2);
+{ const last = auditLines().filter(e => e.verdict === 'ALLOW').pop(); check('audit names the evidence grant', !!last && last.domain === 'evidence'); }
+g('commit', '-m', 'manifest'); g('push');
+writeFile('tmp/worklogs/G1-x.md', 'BRIEF\n');
+g('add', '-f', 'tmp/worklogs/G1-x.md');
+check('unmatched worklog path -> commit 0 (evidence grant before "unmatched")', run('git commit -m wl').code === 0);
+g('commit', '-m', 'wl'); g('push');
+setCfg(BASE_CONTRACT); // docs: push — lifts the evidence floor
+writeFile('docs/adr/0001-x.md', 'x\n');
+g('add', 'docs/adr/0001-x.md'); g('commit', '-m', 'adr');
+check('evidence under a ship:push domain -> push 0 (domain lifts the floor)', run('git push').code === 0);
+g('push');
+writeFile('docs/plain.md', 'x\n');
+g('add', 'docs/plain.md');
+setCfg({ contract: { domains: { docs: { paths: ['docs/**'], decide: 'ai', ship: 'none' } } } });
+check('a non-evidence docs file under ship:none -> commit 2 (the grant is path-specific)', run('git commit -m plain').code === 2);
+cleanTree(); setCfg(BASE_CONTRACT);
+
 check('54. commit --allow-empty on clean tree -> 2 (empty set)', run('git commit --allow-empty -m x').code === 2);
 
 check('55. commit --amend -> 2, denied (no amend-union path)', run('git commit --amend -m x').code === 2);
@@ -287,21 +321,28 @@ writeFile('docs/merged.md');
 g('add', 'docs/merged.md'); g('commit', '-m', 'feature docs');
 g('checkout', 'main');
 g('merge', '--no-ff', 'feature-merge', '-m', 'merge feature-merge');
-g('branch', '--unset-upstream'); // force base fallback (symbolic-ref/ls-remote) instead of @{u}
+g('branch', '--unset-upstream'); // force base fallback (local origin/HEAD symref) instead of @{u}
+gTry('remote', 'set-head', 'origin', '-a'); // the gate never calls the remote — origin/HEAD must already be set locally
 {
   const r = run('git push');
   check('56a. merge-commit push, base fallback -> 0', r.code === 0);
   const last = auditLines().filter(e => e.verdict === 'ALLOW').pop();
   check('56b. audit files include merged docs file (diff, not log)', !!last && last.files.includes('docs/merged.md'));
 }
+gTry('symbolic-ref', '--delete', 'refs/remotes/origin/HEAD'); // restore: origin/HEAD unset locally for the first-push test below
 g('push', '-u', 'origin', 'main');
 gTry('branch', '-d', 'feature-merge');
 
-// ===================================================== FIRST PUSH OF A NEW BRANCH (ls-remote fallback)
+// ===================================================== FIRST PUSH OF A NEW BRANCH (no remote call — spec §5 / v2 "a gate never talks to the remote")
 g('checkout', '-b', 'feat-new');
 writeFile('docs/newbranch.md');
-g('add', 'docs/newbranch.md'); g('commit', '-m', 'new branch docs'); // no upstream yet
-check('first push of new branch via ls-remote fallback -> 0', run('git push -u origin feat-new').code === 0);
+g('add', 'docs/newbranch.md'); g('commit', '-m', 'new branch docs'); // no upstream yet, origin/HEAD unset locally
+{
+  const r = run('git push -u origin feat-new');
+  check('first push with origin/HEAD unset -> 2, names remote set-head', r.code === 2 && /git remote set-head origin -a/.test(r.stderr));
+}
+g('remote', 'set-head', 'origin', '-a'); // the operator's one-time step
+check('first push after set-head -> 0 (merge-base against origin/HEAD, local only)', run('git push -u origin feat-new').code === 0);
 g('push', '-u', 'origin', 'feat-new');
 g('checkout', 'main');
 

@@ -23,12 +23,18 @@
 - `hooks/stop-handoff.js` (Stop): a roled pane with edits since `startedAt` and no newer handoff at `tmp/handoffs/M<n>.G<k>.S<j>-dev.md` / `M<n>.G<k>-architect.md` / `M<n>-coordinator.md` is refused once, file named. Size budgets (handoff ≤40 lines, plan section ≤300 lines / ≤7 steps) as one advisory line.
 - ship-gate: `ORCH_ROLE=reviewer` → commit/push refused (ADVISORY, with or without a contract).
 - `tmp/handoffs/` gitignored. `hooks/lib/transcript.js` (`countEdits`, shared with `session-hygiene`); `globToRe` moved to `hooks/lib/contract.js`.
+- `scripts/orch-review.js` — the gate: `orch review G<k> --step S<j> | --plan`. Refuses a dirty tree under the goal's paths and dual review without `models.review-alt`; range from the frozen BRIEF (`base:`/`domains:` at the ROUTE commit) chained from the latest passing round; tests on a detached worktree under `<git-common-dir>/orch/wt/<id>/`; reviewer slot(s) spawned with `ORCH_ROLE=reviewer` in the child env; slot files, round manifest and content-addressed rubric copies (`docs/reviews/rubrics/<name>.<sha256>.md`) committed `-- docs/reviews` only; item set `In review`; roster entry while it runs.
+- `hooks/lib/evidence-lint.js` — spec §5 lint (FROZEN / CHAIN / TARGET / legs a–f / CLOSE TAIL), git + lock only; runs in the ship gate at `board-gh done --goal --step` and `close-goal` — ENFORCED* with a lock entry, ADVISORY (audit line) without.
+- ship-gate: built-in `commit` grant for `docs/reviews/**`, `tmp/worklogs/**`, `docs/adr/**` (a domain may lift it to `push`); `git worktree add --detach` / `remove` allowed under `<git-common-dir>/orch/wt/` only.
+- `board-gh done --goal G<n> --step S<j> <item#>`; `add-goal` validates `domains:` against the contract; `read` marks merged goals `unverified` (+ `unverifiedReason`) when no passing round covers their final range; `/orch:board` shows it.
 
 ### Changed
 - Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
 - Goals sort Priority-first across milestones, then milestone, then issue; read goals carry `bucket` and `feature`. `/orch:go` picks the focus goal by that order (recency rule retired).
 - `init` no longer seeds Pipeline from contract domains (absent → `general`).
 - The goal skill's shaping table and setup's `workflow.tools` defaults no longer name superpowers; orch routes only through `workflow.tools` stages and its own native fallbacks.
+- ship-gate: the push-base `ls-remote` fallback is gone — with no upstream and no local `origin/HEAD` the push is refused naming `git remote set-head origin -a` (a gate never talks to the remote).
+- Bare `board-gh done <item#>` is refused (script and hook).
 
 ### Removed
 - `docs/BOARD.md` as a board store. `/orch:setup` deletes it; nothing is imported.

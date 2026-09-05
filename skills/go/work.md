@@ -57,3 +57,12 @@ Simplicity criterion: improvement bought with disproportionate complexity
 
 Complete when: the ledger satisfies the BRIEF's `done:` → return to the
 driver, phase ship.
+
+## Gate rounds (spec §5)
+
+The gate is a script, never a hand-written manifest:
+`node "<plugin>/scripts/orch-review.js" G<k> --step S<j>` (or `--plan`) — it refuses a dirty tree under the goal's paths, assembles the brief (rubric + diff + handoff + BRIEF), runs the tests on a detached worktree, spawns the reviewer slot(s), and writes and commits `docs/reviews/`.
+Read the manifest's `verdict:` line and do exactly one thing:
+pass → `done --goal G<k> --step S<j> <item#>` · fail → hand back to the same Dev with the manifest plus the failing test output and any conflict context, never a bare retry · inconclusive → `attention G<k> "inconclusive: <manifest>"` and stop — when the Director clears it, re-run the gate as the next round with no Dev dispatch.
+Fix rounds count `fail` manifests for the step, not `R` numbers: fails 1–2 resume the same Dev pane; fail 3 = fresh Dev one tier up; a finding that survives two fails, or the same error or an empty diff twice, is a stall → Director. Inconclusive rounds do not count.
+The ship-gate evidence lint re-derives the manifest header from git at `done` and `close-goal`; a BLOCK there names the leg — read it, never re-run the gate to make it go away.

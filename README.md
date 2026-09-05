@@ -73,7 +73,7 @@ There is no bare `/orch` — always one of these five. [Architecture diagram →
 
 | Hook | Plain meaning |
 |---|---|
-| 🚢 `contract-ship-gate` | Deny-by-default git surface: every command is refused unless it's read/local or a `commit`/`push` your contract covers — judged by what's actually in your repo, never by the command's arguments. |
+| 🚢 `contract-ship-gate` | Deny-by-default git surface: every command is refused unless it's read/local or a `commit`/`push` your contract covers — judged by what's actually in your repo, never by the command's arguments. Evidence lint at `board-gh done --goal --step` / `close-goal`: the round manifest chain under `docs/reviews/` is re-derived from git and the locked contract (enforced with a lock entry, advisory without). Worklogs, reviews and ADRs carry a built-in `commit` grant; `git worktree add --detach`/`remove` are allowed only under `<git-common-dir>/orch/wt/` (the review script's test worktrees). |
 | 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. |
 | 🔒 `block-protected-dirs` | Folders you declare untouchable stay untouchable. |
 | 🔍 `read-before-write` | First edit to a critical file is refused until the AI states callers, the test that'd catch a mistake, and the number justifying it. |
@@ -89,7 +89,7 @@ There is no bare `/orch` — always one of these five. [Architecture diagram →
 `cherry-pick`, `revert`, `tag`, `commit --amend`, use an alias, or touch
 `remote`/`config`/`submodule`/`clone` — while a contract is active. It also
 can't commit while a domain you reserved is dirty, or make a branch's first
-push with no resolvable remote default. Every block names you as the
+push before you run `git remote set-head origin -a` once — the gate never asks the remote. Every block names you as the
 override. And it is **not a sandbox**: it reads the commands the AI types,
 so a script that runs `git` from inside is out of its sight.
 Role guardrails (`ORCH_ROLE`) are **advisory** by design — the role is an environment variable any pane can set, and a `cat` inside a script is a read no hook sees.
@@ -137,7 +137,7 @@ clause** moved less than the usual wobble = not an improvement (statistical
 significance) · **guardrails** rules enforced by programs, not by asking
 nicely (policy-as-code) · **contract** your map of who decides and who
 ships (decision rights / RACI) · **ADR** architecture decision record ·
-**ship grant** how far the AI may push on its own (deploy permission) · **handoff** a role's ≤40-line exit note under `tmp/handoffs/` (scratch; the worklog is the record) · **session marker** `{role, milestone, goal, step, startedAt}` per pane, in the git common dir — what the role hooks key on · **recipe** the named stage sequence between a step's brief and its gate — `tdd · debug · iterate · cleanup · fast` on steps, `spec · research` for shaping; one page each under `skills/go/recipes/`, hashed into the review manifest · **stage** one named phase of a recipe; `workflow.tools` maps a stage to one chosen skill pinned by version (`tdd@<sha12>`, `to-spec@2.1.0`), orch's native fallback otherwise — data, never read by a hook.
+**ship grant** how far the AI may push on its own (deploy permission) · **handoff** a role's ≤40-line exit note under `tmp/handoffs/` (scratch; the worklog is the record) · **session marker** `{role, milestone, goal, step, startedAt}` per pane, in the git common dir — what the role hooks key on · **recipe** the named stage sequence between a step's brief and its gate — `tdd · debug · iterate · cleanup · fast` on steps, `spec · research` for shaping; one page each under `skills/go/recipes/`, hashed into the review manifest · **stage** one named phase of a recipe; `workflow.tools` maps a stage to one chosen skill pinned by version (`tdd@<sha12>`, `to-spec@2.1.0`), orch's native fallback otherwise — data, never read by a hook · **round manifest** `docs/reviews/M<n>.G<k>.S<j>.R<r>.md`, the gate's verifiable verdict header (range, paths, rubric hashes, slots) · **evidence lint** the ship-gate check that re-derives a manifest chain from git alone.
 
 **Renamed in v0.4.0** (if you saw the earlier version): front → goal ·
 dossier → worklog · hook wall → guardrails · judge independence → independent

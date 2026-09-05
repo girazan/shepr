@@ -266,6 +266,9 @@ function write(ctx) {
       const fm = body.match(/^feature:\s*(.+)$/m); const feature = fm ? fm[1].trim() : null;
       const dm = body.match(/^domains:\s*(.+)$/m); const domains = dm ? dm[1].split(/[,\s]+/).filter(Boolean) : [];
       if (feature && domains.length && !domains.includes(feature)) { say(`add-goal: feature: ${feature} is not one of domains: ${domains.join(', ')} — the Feature is the goal's primary domain`); return 1; }
+      const cdoms = lockCfg.contract && lockCfg.contract.domains ? Object.keys(lockCfg.contract.domains) : null;
+      const ghost = cdoms ? domains.filter(d => !cdoms.includes(d)) : [];
+      if (ghost.length) { say(`add-goal: domains: ${ghost.join(', ')} not in the contract (${cdoms.join(', ')}) — domains: names contract domains only (spec §4)`); return 1; }
       if (cfg.fieldIds.feature) {
         if (!feature) { say('add-goal: the BRIEF needs a `feature:` line (the Project has a Feature field = contract domains)'); return 1; }
         optionId('feature', feature); // validate before any write
@@ -385,7 +388,16 @@ function write(ctx) {
       const g = goal(gn);
       runAction('attention', g.lane, { issue: gn, lane: g.lane, clear: !!opt.clear, why: pos[1] });
     },
-    done() { const n = Number(pos[0]); const { g } = findItem(n); runAction('done', g.lane, { issue: n, lane: g.lane }); },
+    done() {
+      const n = Number(pos[0]); const gn = laneOf(str('goal')); const step = str('step');
+      if (!n || !gn || !/^S\d+$/.test(step || '')) {
+        say('done: use `done --goal G<n> --step S<j> <item#>` — a bare `done <item#>` is refused: the ship-gate evidence lint needs the goal and step ids, which an item number cannot give it offline (spec §5)'); return 1;
+      }
+      const { g, i } = findItem(n);
+      if (g.issue !== gn) { say(`done: #${n} belongs to ${g.lane}, not G${gn}`); return 1; }
+      if (i.step !== step) { say(`done: #${n} is step ${i.step || '(none)'}, not ${step}`); return 1; }
+      runAction('done', g.lane, { issue: n, lane: g.lane });
+    },
     'close-goal'() {
       const gn = laneOf(pos[0]); if (!gn) throw new Error('usage: close-goal G<n> --evidence "<ledger line or artifact path>"');
       const evidence = str('evidence');

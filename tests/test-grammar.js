@@ -168,5 +168,14 @@ check('delegate names the marker path', delegate.includes('<git-common-dir>/orch
 check('go records the focus pick in the marker', go.includes('session-marker.js" set --goal G<n>'));
 check('README counts eleven hooks and states the unlocked-contract degradation', /Eleven hooks/.test(readme) && readme.includes('advisory in fact') && readme.includes('contract: locked|unlocked'));
 
+// 10. Gate rounds — canonical in work.md; the go skill only names the verb.
+check('work states the gate invocation', work.includes('node "<plugin>/scripts/orch-review.js" G<k> --step S<j>'));
+check('work states the verdict rule', work.includes('pass → `done --goal G<k> --step S<j> <item#>` · fail → hand back to the same Dev with the manifest plus the failing test output and any conflict context, never a bare retry · inconclusive → `attention G<k> "inconclusive: <manifest>"`'));
+check('work states the fix-round rule', work.includes('Fix rounds count `fail` manifests for the step, not `R` numbers: fails 1–2 resume the same Dev pane; fail 3 = fresh Dev one tier up'));
+check('work says inconclusive rounds do not count', work.includes('Inconclusive rounds do not count.'));
+check('go uses done --goal --step and never bare done', go.includes('done --goal G<n> --step S<j> <item#>') && !go.includes('`done <issue#>`'));
+check('board renders unverified merged goals', board.includes('unverified'));
+check('README names the evidence lint and the worktree allowlist', readme.includes('evidence lint') && readme.includes('orch/wt/'));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

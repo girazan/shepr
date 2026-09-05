@@ -17,7 +17,7 @@ READ-ONLY. Never route, never delegate, never edit a file. Two announced excepti
 1. Board: `node "<plugin>/scripts/board-gh.js" read --json` — GitHub Issues
    + the repo's Project ARE the board (spec §4): `goals[]` (`lane` = `G<n>`,
    `name`, `milestone`, folded `status`, `blocker`, `items[]` incl. YOU
-   items flagged `you`, the gate item carrying `gate`). No
+   items flagged `you`, the gate item carrying `gate`). A `merged` goal with `unverified: true` renders `merged ⚠ unverified: <unverifiedReason>` — it was closed outside `board-gh`, or no passing round manifest covers its final range (spec §4). No
    `.orch/board.json` → say "board not initialised — run
    `/orch:board init`" and stop. GitHub unreachable → say so and stop;
    never render from memory.
