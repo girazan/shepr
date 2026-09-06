@@ -68,5 +68,25 @@ check('gh pr view allowed', run('gh pr view 5') === 0);
   fs.rmSync(CFG, { force: true });
 }
 
+// v0.9.4 laneRebase: --force-with-lease of the lane's own branch from a granted worktree only.
+{
+  const R2 = path.join(SCRATCH, 'repo2');
+  fs.mkdirSync(R2, { recursive: true });
+  const gi = (cwd, ...a) => execFileSync('git', a, { cwd, env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  gi(R2, 'init', '-q', '-b', 'main'); fs.writeFileSync(path.join(R2, 'a.txt'), 'a\n'); gi(R2, 'add', 'a.txt'); gi(R2, 'commit', '-q', '-m', 'seed');
+  const WT = path.join(R2, '.worktrees', 'l'); gi(R2, 'worktree', 'add', '-q', '-b', 'lane/l', WT, 'HEAD');
+  fs.mkdirSync(path.join(R2, '.claude'), { recursive: true });
+  const runIn = (cmd, cwd) => { const payload = JSON.stringify({ session_id: 's', cwd, tool_input: { command: cmd } }); try { execFileSync('node', [HOOK], { input: payload, env: { ...process.env, USERPROFILE: FAKEHOME, HOME: FAKEHOME }, stdio: ['pipe', 'pipe', 'pipe'] }); return 0; } catch (e) { return e.status; } };
+  fs.writeFileSync(path.join(R2, '.claude', 'orch.json'), JSON.stringify({ workflow: { worktreeRoots: ['.worktrees'], laneRebase: true } }));
+  check('laneRebase: --force-with-lease of lane/l from its worktree allowed', runIn('git push --force-with-lease origin lane/l', WT) === 0);
+  check('laneRebase: --force-with-lease with no branch arg allowed', runIn('git push --force-with-lease', WT) === 0);
+  check('laneRebase: bare --force still blocked', runIn('git push --force origin lane/l', WT) === 2);
+  check('laneRebase: -f still blocked', runIn('git push -f', WT) === 2);
+  check('laneRebase: --force-with-lease of another branch blocked', runIn('git push --force-with-lease origin main', WT) === 2);
+  check('laneRebase: --force-with-lease from the main checkout blocked', runIn('git push --force-with-lease', R2) === 2);
+  fs.writeFileSync(path.join(R2, '.claude', 'orch.json'), JSON.stringify({ workflow: { worktreeRoots: ['.worktrees'] } }));
+  check('laneRebase off: --force-with-lease blocked', runIn('git push --force-with-lease origin lane/l', WT) === 2);
+}
+
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);

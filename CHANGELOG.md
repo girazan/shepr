@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4 — 2026-09-07
+
+### Fixed
+- laneRebase: a mid-conflict rebase has a detached HEAD, so `--continue`/`--abort`/`--skip` were refused (R13 on the first live rebase). The gate now reads the branch being rebased from git's own `rebase-merge/head-name` / `rebase-apply/head-name`; a rebase of the default branch stays refused.
+- laneRebase: re-publishing the rebased branch needs `git push --force-with-lease` — allowed (exact flag, never bare `--force`/`-f`, no refspec, own branch only) from a granted lane worktree in both the ship-gate's push shape and the destructive-git guard. 12 new tests across the two suites.
+
 ## 0.9.3 — 2026-09-06
 
 ### Added

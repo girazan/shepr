@@ -268,8 +268,8 @@ check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.joi
   g('worktree', 'add', '-b', 'lane/r', WTR, 'HEAD');
   const runAt = (cmd, cwd) => {
     const payload = JSON.stringify({ session_id: 's', cwd, tool_input: { command: cmd } });
-    try { execFileSync('node', [HOOK], { input: payload, cwd, env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME, ORCH_ROLE: '' }, stdio: ['pipe', 'pipe', 'pipe'] }); return 0; }
-    catch (e) { return e.status; }
+    try { execFileSync('node', [HOOK], { input: payload, cwd, env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME, ORCH_ROLE: '' }, stdio: ['pipe', 'pipe', 'pipe'] }); runAt.err = ''; return 0; }
+    catch (e) { runAt.err = (e.stderr || Buffer.alloc(0)).toString(); return e.status; }
   };
   setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['.worktrees'] } });
   check('laneRebase absent: rebase in a lane worktree -> 2', runAt('git rebase origin/main', WTR) === 2);
@@ -281,6 +281,29 @@ check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.joi
   check('laneRebase: merge still -> 2', runAt('git merge origin/main', WTR) === 2);
   setCfg({ ...JSON.parse(saved), workflow: { laneRebase: true } });
   check('laneRebase without worktreeRoots -> 2', runAt('git rebase origin/main', WTR) === 2);
+  // v0.9.4: mid-rebase (detached HEAD) continuation, and re-publish with --force-with-lease.
+  setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['.worktrees'], laneRebase: true } });
+  const gw = (...a) => execFileSync('git', a, { cwd: WTR, env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME }, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  const headName = gw('rev-parse', '--git-path', 'rebase-merge/head-name').trim();
+  fs.mkdirSync(path.dirname(headName), { recursive: true });
+  fs.writeFileSync(headName, 'refs/heads/lane/r\n');
+  gw('checkout', '--detach');
+  check('laneRebase: --continue mid-rebase (detached HEAD, head-name = lane branch) -> 0', runAt('git rebase --continue', WTR) === 0);
+  fs.writeFileSync(headName, 'refs/heads/main\n');
+  check('laneRebase: detached HEAD whose rebase head-name is main -> 2', runAt('git rebase --continue', WTR) === 2);
+  fs.rmSync(path.dirname(headName), { recursive: true, force: true });
+  gw('checkout', 'lane/r');
+  fs.mkdirSync(path.join(WTR, 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(WTR, 'docs', 'lane-r.md'), 'r\n'); // docs/** = ship: push in BASE_CONTRACT
+  gw('add', 'docs/lane-r.md'); gw('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'lane r work');
+  gw('push', '-q', '-u', 'origin', 'lane/r'); // a real lane has an upstream; the gate resolves its push base from it
+  fs.writeFileSync(path.join(WTR, 'docs', 'lane-r.md'), 'r2\n'); // ...and after a rebase the branch differs from it
+  gw('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-am', 'lane r rebased');
+  const leaseRc = runAt('git push --force-with-lease origin lane/r', WTR);
+  check(`laneRebase: push --force-with-lease of the lane branch -> 0 (ship-gate)${leaseRc === 0 ? '' : ' :: ' + runAt.err.trim().slice(0, 200)}`, leaseRc === 0);
+  check('laneRebase: push --force (bare) -> 2', runAt('git push --force origin lane/r', WTR) === 2);
+  check('laneRebase: push --force-with-lease of another branch -> 2', runAt('git push --force-with-lease origin main', WTR) === 2);
+  check('laneRebase: push --force-with-lease from the main checkout -> 2', runAt('git push --force-with-lease', REPO) === 2);
   g('worktree', 'remove', '--force', WTR);
   setCfgRaw(saved);
 }

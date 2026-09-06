@@ -184,7 +184,16 @@ function laneRebaseOk(cwdArg, cfgArg) {
     const here = fs.realpathSync.native(git(cwdArg, ['rev-parse', '--show-toplevel']).trim());
     const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
     if (!roots.some(r => fold(here).startsWith(fold(path.join(mainTop, r) + path.sep)))) return false;
-    const branch = git(cwdArg, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    let branch = git(cwdArg, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    if (branch === 'HEAD') {
+      // Mid-rebase HEAD is detached; the branch being rebased is recorded by git itself.
+      for (const rel of ['rebase-merge/head-name', 'rebase-apply/head-name']) {
+        try {
+          const p = git(cwdArg, ['rev-parse', '--git-path', rel]).trim();
+          if (fs.existsSync(p)) { branch = fs.readFileSync(p, 'utf8').trim().replace(/^refs\/heads\//, ''); break; }
+        } catch {}
+      }
+    }
     let def = 'main';
     try { def = git(cwdArg, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim().replace(/^origin\//, ''); } catch {}
     return !!branch && branch !== 'HEAD' && branch !== def && branch !== 'main' && branch !== 'master';
@@ -351,8 +360,11 @@ if (cls.action === 2) {
   const ALLOWED_FLAGS = new Set(['-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose']);
   let branch = null;
   try { branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']).trim(); } catch {}
+  // v0.9.4: `--force-with-lease` (exact, no =ref) is part of the narrow shape
+  // only for a granted lane re-publishing its own rebased branch.
+  const leaseOk = cfg.workflow && cfg.workflow.laneRebase === true && laneRebaseOk(cwd, cfg);
   for (const pt of cls.pushSegs) {
-    const flags = pt.filter(x => x.startsWith('-'));
+    const flags = pt.filter(x => x.startsWith('-')).filter(f => !(leaseOk && f === '--force-with-lease'));
     const pos = pt.filter(x => !x.startsWith('-'));
     if (flags.some(f => !ALLOWED_FLAGS.has(f)) || pt.some(x => x.includes(':')) ||
         pos.length > 2 || (pos.length === 2 && pos[1] !== branch && pos[1] !== 'HEAD')) {

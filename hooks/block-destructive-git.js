@@ -108,8 +108,35 @@ function mergeBaseAllowed(command) {
   return true;
 }
 
+// v0.9.4: after a granted lane rebase (workflow.laneRebase) the lane must
+// re-publish its OWN branch: `push --force-with-lease` (never bare --force)
+// is allowed from a worktree under workflow.worktreeRoots when HEAD is a
+// non-default branch and the command names no other branch or refspec.
+function laneForcePushOk(command) {
+  const wf = full.workflow || {};
+  if (wf.laneRebase !== true || !Array.isArray(wf.worktreeRoots)) return false;
+  if (/\s-f\b|--force(\s|$)/.test(command) || /:/.test(command.replace(/^[^ ]*:/, ''))) return false; // --force-with-lease only, no refspec
+  const path = require('path');
+  const { execSync } = require('child_process');
+  const cwd = j.cwd || process.cwd();
+  const opts = { cwd, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] };
+  try {
+    const common = fs.realpathSync.native(execSync('git rev-parse --git-common-dir', opts).toString().trim().replace(/^(?![A-Za-z]:|\/)/, cwd + path.sep));
+    const mainTop = path.dirname(common);
+    const here = fs.realpathSync.native(execSync('git rev-parse --show-toplevel', opts).toString().trim());
+    const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
+    const roots = wf.worktreeRoots.filter(r => typeof r === 'string' && r && !path.isAbsolute(r) && !r.split(/[\\/]/).includes('..'));
+    if (!roots.some(r => fold(here).startsWith(fold(path.join(mainTop, r) + path.sep)))) return false;
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', opts).toString().trim();
+    if (!branch || branch === 'HEAD' || branch === 'main' || branch === 'master') return false;
+    const pos = command.replace(/^.*\bpush\b/, '').split(/\s+/).filter(x => x && !x.startsWith('-'));
+    return pos.length <= 2 && (pos.length < 2 || pos[1] === branch || pos[1] === 'HEAD');
+  } catch { return false; }
+}
+
 for (let [re, name] of rules) {
   if (re.test(cmd)) {
+    if (name === 'git push --force' && laneForcePushOk(cmd)) continue;
     if (name.startsWith('gh pr merge')) {
       if (mergeBaseAllowed(cmd)) continue;
       if (mergeReason) name = `${name} — ship: merge refused: ${mergeReason}`;
