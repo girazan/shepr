@@ -35,6 +35,7 @@ READ-ONLY. Never route, never delegate, never edit a file. Two announced excepti
 7. Tools: `node "<plugin>/scripts/tools.js" check` — every line that says
    `missing` or `mismatch` is a stage running on its native fallback;
    collect them for the footer.
+8. Fleet and pulse: `node "<plugin>/scripts/coordinator.js" fleet` → `fleet[]` (one line per running/reserved delegate, ghosts flagged), `pulse.age` in minutes with `pulse.stale`, and `outOfScope` — commits on a running goal's branch since its ROUTE `base:` that touch another domain's paths (spec §5 residual: not reviewed under this goal; the Director's).
 
 ## Render (ASCII, in chat)
 
@@ -56,10 +57,12 @@ under a one-line milestone header, YOU last and visually distinct, gates
      GATES: <from ## GATES or the board's rules line>
      ADRs: <NNNN proposed Nd ⚠ …> | GATE DIGEST where goal-level
      TODAY'S QUEUE: <current session order, from NOW items + parks>
+     FLEET: <fleet lines> · pulse <age>m <⚠ stale when pulse.stale> · out-of-scope: G<k> <sha> <files> | none
      TOOLS: <stage> <name>@<pin> missing|mismatch → native
 
 Done items keep their place with ✓ — the map read left-to-right IS the
 history. Buckets are the Project's `Priority` options — never invent one.
+The FLEET footer reads the roster and the audit log through the `fleet` verb; a `👻 ghost` is a delegate whose `lastSeen` is older than `fleet.staleMinutes`; a stale pulse means no Coordinator tick ran within `fleet.pulseStaleMinutes` (default 30).
 The `TOOLS:` line appears only when a pin is missing or mismatched; every pin holding → no line.
 
 ## `/orch:board html`

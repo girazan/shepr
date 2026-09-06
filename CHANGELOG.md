@@ -27,8 +27,13 @@
 - `hooks/lib/evidence-lint.js` — spec §5 lint (FROZEN / CHAIN / TARGET / legs a–f / CLOSE TAIL), git + lock only; runs in the ship gate at `board-gh done --goal --step` and `close-goal` — ENFORCED* with a lock entry, ADVISORY (audit line) without.
 - ship-gate: built-in `commit` grant for `docs/reviews/**`, `tmp/worklogs/**`, `docs/adr/**` (a domain may lift it to `push`); `git worktree add --detach` / `remove` allowed under `<git-common-dir>/orch/wt/` only.
 - `board-gh done --goal G<n> --step S<j> <item#>`; `add-goal` validates `domains:` against the contract; `read` marks merged goals `unverified` (+ `unverifiedReason`) when no passing round covers their final range; `/orch:board` shows it.
+- `scripts/coordinator.js` — the Coordinator tick as code: goal pick rules 0–5 (no two running goals own a common file — `git ls-files` ∩ every listed domain's paths), `kill:` check, fleet ceiling, pulse line `{by:"pulse"}`; five-line dispatch proposal (`confirm` via AskUserQuestion — Go / Edit brief / Skip / Stop — or `auto` to the audit log); pane launch (roster entry, and under `herdr` a pane split with `ORCH_ROLE`/`ORCH_IDS` env, `agent start --kind --pane`, `agent prompt`); fix rounds (resident on fails 1–2, fresh one tier up on 3, no-progress N=2 → stall); verdict → `done --goal --step` / hand-back / `attention`; PR text per goal; milestone summary; `fleet` data for the board.
+- `skills/go/coordinator.md` — the tick, the vehicles `native | loop | herdr` (`/loop <interval> /orch:go`), goal branch `goal/G<k>-<name>` at the ROUTE `base:` on first pick, one PR per goal (`G<k> · <name>`), `close-goal` after the Director merges, `tmp/handoffs/M<n>-coordinator.md` for `/orch:milestone close`.
+- `/orch:board` FLEET footer: delegates with ghosts, pulse age/stale, out-of-scope commits (spec §5 residual).
+- `workflow.coordinator`, `workflow.dispatch`, `fleet.capacity`, `fleet.staleMinutes`, `fleet.pulseStaleMinutes` asked by `/orch:setup`.
 
 ### Changed
+- `delegate.md`: a step brief's MUST DO opens with the recipe's stages; CONTEXT names only the goal's worklog and listed ADRs.
 - Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
 - Goals sort Priority-first across milestones, then milestone, then issue; read goals carry `bucket` and `feature`. `/orch:go` picks the focus goal by that order (recency rule retired).
 - `init` no longer seeds Pipeline from contract domains (absent → `general`).

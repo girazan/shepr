@@ -22,6 +22,7 @@ judgment, verdict-only; suited cheap models execute.
 
 1. Read: `node "<plugin>/scripts/board-gh.js" read --json` · the active
    goal's worklog · `docs/adr/` for `Status: proposed` · the contract.
+   If `workflow.coordinator` (`.claude/orch.json`, one of `native | loop | herdr`) is `loop` or `herdr`, or this session's `ORCH_ROLE` is `coordinator`, this invocation is one Coordinator tick: load `coordinator.md` and stop after its one action.
 2. Focus — exactly one goal per session when several are open:
    `blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue
    (`/orch:go G142` names one). Never silently switch focus mid-session.
@@ -35,6 +36,7 @@ judgment, verdict-only; suited cheap models execute.
 
 | # | Condition | Phase |
 |---|---|---|
+| 0 | `workflow.coordinator` is `loop`/`herdr`, or `ORCH_ROLE=coordinator` | tick → load `coordinator.md` (one action, then stop) |
 | 1 | goal status `merged` | closed → report, stop; a merged goal never re-enters ship or loop |
 | 2 | operator's message asks for an autonomous run | loop → load `loop.md` |
 | 3 | no goal / no BRIEF | → point to `/orch:goal`, stop |
