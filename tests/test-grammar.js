@@ -196,5 +196,8 @@ check('delegate: CONTEXT names only this goal', delegate.includes('CONTEXT names
 check('board renders the FLEET footer with pulse and out-of-scope', board.includes('FLEET:') && board.includes('pulse') && board.includes('out-of-scope'));
 check('setup asks for workflow.coordinator and workflow.dispatch', setup.includes('workflow.coordinator') && setup.includes('workflow.dispatch'));
 
+// 11. README names the Coordinator vehicles and dispatch confirm once.
+check('README states the vehicles and dispatch modes', readme.includes('`native | loop | herdr`') && readme.includes('`confirm | auto`'));
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
