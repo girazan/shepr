@@ -59,6 +59,9 @@ An implementation brief thinner than ~15 lines is under-specified —
 fill it out before dispatch; vague briefs buy fix rounds. Recon/scan
 briefs may be shorter, but keep all eight headings.
 
+On a step dispatch, MUST DO opens with the recipe's stages (copied from `skills/go/recipes/<recipe>.md`, in order) before any other constraint.
+CONTEXT names only this goal's worklog and the ADRs the step lists — never another goal's handoff, never the full plan.
+
 ## Killing and restarting a delegate
 
 1. **Bank before kill — hard rule.** An agent's context dies with it and

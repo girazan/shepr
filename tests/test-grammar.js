@@ -15,6 +15,7 @@ const renderer = R('scripts/board-html.js');
 const milestone = R('skills/milestone/SKILL.md'); const setup = R('skills/setup/SKILL.md');
 const readme = R('README.md');
 const delegate = R('skills/go/delegate.md');
+const coord = R('skills/go/coordinator.md');
 
 let pass = 0, fail = 0, n = 0;
 function check(name, cond) {
@@ -176,6 +177,24 @@ check('work says inconclusive rounds do not count', work.includes('Inconclusive 
 check('go uses done --goal --step and never bare done', go.includes('done --goal G<n> --step S<j> <item#>') && !go.includes('`done <issue#>`'));
 check('board renders unverified merged goals', board.includes('unverified'));
 check('README names the evidence lint and the worktree allowlist', readme.includes('evidence lint') && readme.includes('orch/wt/'));
+
+// 10. Coordinator (plan 5) — vehicles, proposal, branch/pane grammars, pulse, brief opening.
+check('go names the three vehicles once', go.includes('`native | loop | herdr`'));
+check('go routes the loop/herdr tick to coordinator.md', go.includes('load `coordinator.md`'));
+check('coordinator states the loop invocation', coord.includes('/loop <interval> /orch:go'));
+for (const key of ['goal/step:', 'role/tier/recipe:', 'task:', 'domains/ship:', 'caps:']) check(`coordinator proposal has "${key}"`, coord.includes(key));
+check('no other skill restates the proposal', ![go, goal, board, work, loop, delegate].some(t => t.includes('role/tier/recipe:')));
+check('coordinator states the confirm options', coord.includes('Go / Edit brief / Skip / Stop'));
+check('coordinator states the branch grammar', coord.includes('goal/G<k>-<name>'));
+check('coordinator states the pane grammar', coord.includes('impl-G<k>-S<j>'));
+check('coordinator states the pulse line', coord.includes('{by:"pulse"}'));
+check('coordinator states no-progress N = 2', coord.includes('same error or an empty diff twice'));
+check('coordinator never reads code', coord.includes('never `Read` a source file'));
+check('coordinator states the PR title', coord.includes('G<k> · <name>'));
+check('delegate: MUST DO opens with the recipe stages', delegate.includes('MUST DO opens with the recipe\'s stages'));
+check('delegate: CONTEXT names only this goal', delegate.includes('CONTEXT names only this goal\'s worklog and the ADRs the step lists'));
+check('board renders the FLEET footer with pulse and out-of-scope', board.includes('FLEET:') && board.includes('pulse') && board.includes('out-of-scope'));
+check('setup asks for workflow.coordinator and workflow.dispatch', setup.includes('workflow.coordinator') && setup.includes('workflow.dispatch'));
 
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

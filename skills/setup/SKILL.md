@@ -79,6 +79,9 @@ into the lock — no hook reads `workflow.tools`.
 2. If `find-skills` is installed (`~/.agents/skills/find-skills/SKILL.md` exists), offer `npx skills find <stage>` for any stage the operator wants a different skill for; otherwise offer only what `list` shows. One skill per stage, never a list.
 3. If any of `to-spec`, `to-tickets`, `wayfinder` is chosen, `docs/agents/issue-tracker.md` must carry the line `# Issue tracker: Local Markdown` — `pin` refuses otherwise. Tell the operator to run `/setup-matt-pocock-skills` and choose local markdown (files under `.scratch/`, gitignored); pointing that tracker at GitHub is a misconfiguration, because `board-gh` is the only board writer.
 4. `node "<plugin>/scripts/tools.js" pin <stage>=<skill|native> … --write` — pins each choice as `<skill>@<version>` into `.claude/orch.json` → `workflow.tools`. Show the printed map. Re-run after `npx skills update` or a plugin update: a changed version is a `mismatch` (that stage runs native) until re-pinned; `/orch:board` lists such stages.
+Ask `workflow.coordinator` — `native` (this session drives), `loop` (`/loop <interval> /orch:go`, one tick per invocation), or `herdr` (panes via `herdr agent start … --env ORCH_ROLE=…`); default `native`. Write it as `"workflow": { "coordinator": … }`.
+Ask `workflow.dispatch` — `confirm` (every dispatch is a five-line proposal the Director answers Go / Edit brief / Skip / Stop) or `auto` (the same five lines go to the audit log and the tick proceeds); default `confirm`. Spec §12 says: run one milestone on `confirm` before switching.
+Fleet keys, all optional: `fleet.capacity` (ceiling, default 6), `fleet.staleMinutes` (ghost after, default 60), `fleet.pulseStaleMinutes` (board flags a stale Coordinator after, default 30).
 
 ## Migrating a v1 contract to schema 2
 
