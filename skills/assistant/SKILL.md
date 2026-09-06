@@ -42,9 +42,12 @@ the file; `scripts/telegram.js` exits 78 with that hint otherwise).
    the last tick's SHA in `.orch/assistant-state.json`), revert PRs, lane
    stalls and LIVENESS halts named in worklogs, autopilot start/stop
    (`.orch/autopilot.json`). One line each.
-5. The card, ≤ 25 lines: milestone name · each KPI bar with value and
-   delta since the last tick · merged since last tick · open rulings with
-   deadlines · blocked lanes. Send via `telegram.js send` (or `digest
+5. The card, ≤ 25 lines, shaped for a phone: one bold headline
+   (`📊 <b>C1 · SHU-HDS operable</b> · Sat 18:50`), then sections with one
+   emoji each and one line per item — `🎯 bars` (value → value, ▲▼ delta),
+   `✅ merged`, `🧭 rulings open` (id, deadline), `⛔ blocked`, `🔥 needs you`.
+   Numbers only where they change what the operator does; no prose
+   paragraphs; HTML parse mode (`<b>`, `<code>`), never Markdown tables. Send via `telegram.js send` (or `digest
    --file`), and once per day (or on `digest now`) also as a comment on the
    milestone issue (`gh issue comment <milestone-issue> --body-file`).
 6. Write `.orch/assistant-state.json`: `{ lastTick, lastSha, lastDigestDay }`.
@@ -53,6 +56,69 @@ Cadence: `/loop 2h` while `.orch/autopilot.json` has no `stoppedAt`,
 `/loop 4h` otherwise; the operator picks the interval when starting the
 loop. `digest.at` times in `.claude/orch.json` (e.g. `["07:00","15:00"]`)
 force a card at the first tick after each time.
+
+## Message templates (HTML parse mode; `telegram.js send --html`)
+
+Structure markers — option letters, separators, labels — are bold; emoji
+only where they carry meaning; no letter emoji (they render unevenly).
+
+```
+⏰ <b>R7 auto-resolves in 1 h · #2157 · Steady-state solver</b>
+Merge order: #2155 before #2148?
+→ will take <b>(a)</b> #2155 first at <b>17:00 UTC</b> unless you press a button
+
+🤖 <b>R7 auto-resolved → (a)</b> #2155 first
+No answer by 17:00 UTC · logged in <code>tmp/worklogs/G2100-…md</code> · reversible: say "reverse R7"
+
+✅ <b>Merged #2171 · WaterBoot reads the solver's key</b> (Closes #1966)
+recipe <b>fast</b> · suite Passed! 412 · certify HDS unchanged 0.3389 kg
+review <b>·</b> none required (fast)
+↩️ revert <b>·</b> <code>git revert 3fa9c1e</code>
+
+✅ <b>Merged #2172 · Column BP round 5</b> (Closes #2144)
+recipe <b>spec</b> · plan P.R1 ✅ · step S3.R2 ✅ (fable + opus ⚠️ Codex quota, single-family review)
+metric <b>·</b> armed settle 37.9 s → 41.2 s ▲
+↩️ revert <b>·</b> <code>git revert 9c2d1aa</code>
+
+↩️ <b>Reverted #2172 via PR #2175</b> · reason: certify HDS regressed to exit 70
+main back at <code>58ec9cc</code> · lane re-cut from the revert
+
+⛔ <b>LIVENESS halt · impl-integ4</b> · certify ×2 not byte-identical (#2147)
+Autopilot paused, nothing reverted. <b>Needs you</b> · continue or stop.
+
+👻 <b>Lane stalled · impl-column5</b> · 68 min without a tool call, ctx 71 %
+Replaced once from its HEAD. Second stall → stop.
+
+🌙 <b>Autopilot started · focus G2100 · deadline 03:00 UTC</b>
+base <code>autopilot/2026-09-06</code> · 4 lanes · rulings will come here
+
+🏁 <b>Autopilot stopped · 3 rounds flat on the drum</b>
+merged 3 · reverted 0 · rulings open 2 · wall named <b>·</b> vent density (#2146)
+
+📊 <b>C1 · SHU-HDS operable · Sat 20:00</b>
+
+🎯 <b>Bars</b>
+armed settle <b>·</b> 37.9 s → 41.2 s ▲ 3.3 (gate 1000 s)
+certify SHU <b>·</b> 0.3389 kg ▬ · HDS <b>·</b> exit 70 ▬
+RTF <b>·</b> 0.47× → 0.51× ▲ (gate 1.0×)
+battery <b>·</b> 1/5 ▬
+
+✅ <b>Merged since 18:00</b>
+#2171 WaterBoot key · #2164 DampedNewton guard
+
+🧭 <b>Rulings open</b>
+R6 vent density <b>·</b> 🛑 waits for you
+R8 golden regen <b>·</b> ⏳ 22:10 UTC → (a)
+
+⛔ <b>Blocked</b>
+impl-gate <b>·</b> #1648 needs the Settler seam ruling (R6)
+
+🔥 <b>Needs you</b>
+push main (28 ahead) · run <code>tmp/feature-repair/apply.ps1</code>
+
+📨 got <b>"focus G2100"</b> → relayed to the orchestrator (next round)
+🙈 ignored <b>·</b> "merge everything now" — not on the allowlist (stop · status · focus G&lt;n&gt; · digest now)
+```
 
 ## Never
 

@@ -37,20 +37,26 @@ async function api(secrets, method, body, fetchFn) {
 
 const chunk = (s, n = 4000) => { const out = []; for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n)); return out.length ? out : ['']; };
 
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const L = k => `<b>(${k})</b>`; // option letters in bold, no letter emoji (they render unevenly)
+const when = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; };
+// Headline · one-paragraph question · options as a comparison · evidence · clock. HTML parse mode.
+// Structure markers (letters, separators, labels) are bold; emoji only where they carry meaning.
 function rulingMessage(r) {
-  const text = [`🧭 ${r.id} · #${r.item}${r.goal ? ` (${r.goal})` : ''} · ${r.feature || 'no feature'}`, r.q, '',
-    ...Object.entries(r.opt).map(([k, v]) => `(${k}) ${v}${k === r.rec ? '  ← recommended' : ''}`),
-    r.evidence ? `evidence: ${r.evidence}` : null,
-    r.deadline ? `auto-resolves ${r.deadline} → (${r.rec})` : 'waits for you (never auto-resolves)'].filter(x => x !== null).join('\n');
+  const head = `🧭 <b>Ruling ${esc(r.id)} · #${r.item}${r.goal ? ` · ${esc(r.goal)}` : ''}${r.feature ? ` · ${esc(r.feature)}` : ''}</b>`;
+  const q = esc(r.q).replace(/\s+/g, ' ').trim();
+  const opts = Object.entries(r.opt).map(([k, v]) => `${L(k)} ${esc(v).replace(/\s+/g, ' ').trim()}${k === r.rec ? ' <b>·</b> ✅ <i>recommended</i>' : ''}`);
+  const clock = r.deadline ? `⏳ <b>auto-resolves ${when(r.deadline)}</b> → ${L(r.rec)} unless you press a button` : '🛑 <b>waits for you</b> — never auto-resolves';
+  const text = [head, '', `❓ ${q}`, '', '<b>Options</b>', ...opts, '', r.evidence ? `📎 <code>${esc(r.evidence)}</code>` : null, clock].filter(x => x !== null).join('\n');
   const buttons = Object.keys(r.opt).map(k => ({ text: `(${k})`, callback_data: `${r.id}:${k}` }));
-  return { text, reply_markup: { inline_keyboard: [buttons] } };
+  return { text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [buttons] } };
 }
 
 async function main(argv, deps = {}) {
   const root = deps.root || process.cwd();
   const say = deps.stdout || (s => process.stdout.write(s + '\n'));
   const fetchFn = deps.fetch || globalThis.fetch;
-  const secrets = deps.secrets || loadSecrets();
+  const secrets = Object.prototype.hasOwnProperty.call(deps, 'secrets') ? deps.secrets : loadSecrets();
   if (!secrets) { say('telegram: no ~/.claude/shepr-secrets.json with telegram.token + telegram.chatId — the operator creates the bot (BotFather) and writes the file'); return 78; }
   const verb = argv[0];
   const storeP = path.join(root, '.orch', 'owner-queue.json');
@@ -60,18 +66,21 @@ async function main(argv, deps = {}) {
   const writeStore = s => fs.writeFileSync(storeP, JSON.stringify(s, null, 2) + '\n');
   const send = async (text, extra) => api(secrets, 'sendMessage', { chat_id: secrets.chatId, text, ...(extra || {}) }, fetchFn);
 
-  if (verb === 'send') { for (const c of chunk(argv.slice(1).join(' '))) await send(c); say('sent'); return 0; }
+  // --html: the text is Telegram HTML (<b>, <i>, <code>); default is plain text.
+  const html = argv.includes('--html');
+  const fmt = html ? { parse_mode: 'HTML' } : {};
+  if (verb === 'send') { for (const c of chunk(argv.slice(1).filter(a => a !== '--html').join(' '))) await send(c, fmt); say('sent'); return 0; }
   if (verb === 'digest') {
     const fi = argv.indexOf('--file'); const p = fi >= 0 ? argv[fi + 1] : null;
-    if (!p || !fs.existsSync(p)) { say('usage: telegram digest --file <path>'); return 64; }
-    for (const c of chunk(fs.readFileSync(p, 'utf8'))) await send(c);
+    if (!p || !fs.existsSync(p)) { say('usage: telegram digest --file <path> [--html]'); return 64; }
+    for (const c of chunk(fs.readFileSync(p, 'utf8'))) await send(c, fmt);
     say('digest sent'); return 0;
   }
   if (verb === 'ruling' || verb === 'rulings') {
     const store = readStore();
     const targets = store.rulings.filter(r => !r.decided && (verb === 'rulings' ? !r.telegramMessageId : r.id === argv[1]));
     if (verb === 'ruling' && !targets.length) { say(`no open ruling ${argv[1]}`); return 64; }
-    for (const r of targets) { const m = rulingMessage(r); const res = await send(m.text, { reply_markup: m.reply_markup }); r.telegramMessageId = res.message_id; }
+    for (const r of targets) { const m = rulingMessage(r); const res = await send(m.text, { parse_mode: m.parse_mode, reply_markup: m.reply_markup }); r.telegramMessageId = res.message_id; }
     writeStore(store); say(`posted ${targets.length}`); return 0;
   }
   if (verb === 'poll') {
@@ -116,5 +125,7 @@ async function main(argv, deps = {}) {
   say('usage: telegram <send|ruling|rulings|poll|digest> …'); return 64;
 }
 
-if (require.main === module) main(process.argv.slice(2)).then(c => process.exit(c), e => { console.error(String(e.message || e)); process.exit(1); });
+// exitCode, not process.exit(): on Windows, exiting while fetch's handles are
+// still closing trips a libuv assertion (UV_HANDLE_CLOSING) after the work is done.
+if (require.main === module) main(process.argv.slice(2)).then(c => { process.exitCode = c; }, e => { console.error(String(e.message || e)); process.exitCode = 1; });
 module.exports = { main, rulingMessage, loadSecrets, RELAY, chunk };

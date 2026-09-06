@@ -92,8 +92,8 @@ check('setup asks for review-alt', R('skills/setup/SKILL.md').includes('review-a
 // 8. setup syncs Feature options on domain change.
 check('setup runs sync-features after a domain edit', setup.includes('sync-features'));
 
-// 9. Five commands, stated once in README.
-check('README lists five commands', readme.includes('/shepr:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
+// 9. Seven commands (0.9.1: + auto, assistant), stated once in README.
+check('README lists seven commands', readme.includes('/shepr:milestone') && readme.includes('/shepr:auto') && readme.includes('/shepr:assistant') && /Seven commands/.test(readme) && readme.includes('one of these seven'));
 
 // 10. Recipes — one page each in skills/go/recipes/; stages and rubric adds verbatim from spec §8.
 const { RECIPES } = require('../scripts/board-gh');

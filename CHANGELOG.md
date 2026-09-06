@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2 — 2026-09-06
+
+### Changed
+- Telegram ruling cards: HTML parse mode, bold headline (`🧭 Ruling R<n> · #item · G<n> · feature`), one-paragraph question, options as a comparison list with 🅰️🅱️🅲 and ✅ on the recommendation, `📎 evidence`, `⏳ auto-resolves <time>` / `🛑 waits for you`; buttons carry the letter emoji. `send`/`digest` take `--html`. The assistant card follows the same shape (headline, one emoji per section, one line per item).
+- `telegram.js` exits via `process.exitCode` (a libuv assertion fired on Windows when exiting with fetch handles still closing). README: seven commands.
+
 ## 0.9.1 — 2026-09-06
 
 ### Added

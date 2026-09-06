@@ -62,7 +62,7 @@ One file, `.claude/orch.json`, at your repo root:
   `low`, `mid`, `high`, and `frontier` (never mixed with other terms). Locking a tiered contract requires locking
   the models map: a locked `contract` now replaces the bundle `{contract, models}` wholesale.
 
-## ⌨️ Five commands — three act on work, one on scope, one looks
+## ⌨️ Seven commands — three act on work, one on scope, one looks, two run unattended
 
 | Command | When | What |
 |---|---|---|
