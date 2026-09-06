@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 — 2026-09-06
+
+### Added
+- ship-gate: `workflow.worktreeRoots` (`.claude/orch.json`, repo-relative dirs, e.g. `[".worktrees"]`) grants lanes `git worktree add [-b <branch>|--detach] <path> [<ref>]` and `remove [--force] <path>` when `<path>` resolves under a listed root. Absent = unchanged (script worktrees under `<git-common-dir>/orch/wt/` only). Absolute or `..` roots are ignored; `prune`, `list`, `move`, extra flags stay denied. Motivation: an orchestrator cutting 3-5 lanes a day needed the operator to type every `worktree add`.
+
 ## 0.8.0 — 2026-09-06
 
 ### Renamed

@@ -241,6 +241,26 @@ check('git worktree add (no --detach) under the prefix -> 2', run(`git worktree 
 check('git worktree prune -> 2', run('git worktree prune').code === 2);
 check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.join(repoKey, 'orch', 'wt', '..', '..', 'x')}"`).code === 2);
 
+// Lane worktree roots (workflow.worktreeRoots): full add/remove under a granted repo-relative root only.
+{
+  const saved = fs.readFileSync(CFG, 'utf8');
+  const LANE = path.join(REPO, '.worktrees', 'lane-x');
+  check('worktreeRoots absent: add -b under .worktrees -> 2', run(`git worktree add ".worktrees/lane-x" -b lane/x HEAD`).code === 2);
+  setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['.worktrees'] } });
+  check('worktreeRoots: relative <path> under root -> 0', run(`git worktree add -b lane/x ".worktrees/lane-x" HEAD`).code === 0);
+  check('worktreeRoots: add -b <br> <path> <ref> under root -> 0', run(`git worktree add -b lane/x ".worktrees/lane-x" HEAD`).code === 0);
+  check('worktreeRoots: add --detach <path> <ref> under root -> 0', run(`git worktree add --detach "${LANE}" HEAD`).code === 0);
+  check('worktreeRoots: add <path> under root -> 0', run(`git worktree add "${LANE}"`).code === 0);
+  check('worktreeRoots: remove --force <path> under root -> 0', run(`git worktree remove --force "${LANE}"`).code === 0);
+  check('worktreeRoots: add outside root -> 2', run(`git worktree add -b lane/x "${path.join(SCRATCH, 'elsewhere')}" HEAD`).code === 2);
+  check('worktreeRoots: add ../escape via root -> 2', run(`git worktree add -b lane/x "${path.join(REPO, '.worktrees', '..', '..', 'x')}" HEAD`).code === 2);
+  check('worktreeRoots: add with extra flag -> 2', run(`git worktree add -b lane/x --force "${LANE}" HEAD`).code === 2);
+  check('worktreeRoots: prune still -> 2', run('git worktree prune').code === 2);
+  setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['..', 'D:/abs'] } });
+  check('worktreeRoots: absolute/.. roots ignored -> 2', run(`git worktree add -b lane/x "${LANE}" HEAD`).code === 2);
+  setCfgRaw(saved);
+}
+
 writeFile('docs/d34.md');
 g('add', 'docs/d34.md');
 check('34. blocked word inside commit MESSAGE is fine -> 0', run('git commit -m "revert the parser fix"').code === 0);

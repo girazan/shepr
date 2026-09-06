@@ -135,12 +135,38 @@ function worktreeOk(segs, cwdArg) {
   if (!segs.length) return true;
   const common = resolveRepoKey(cwdArg);
   if (!common) return false;
-  const prefix = path.join(common, 'orch', 'wt') + path.sep;
   const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const under = (target, prefix) => fold(path.resolve(cwdArg, target)).startsWith(fold(prefix));
+  const scriptWt = path.join(common, 'orch', 'wt') + path.sep;
+  // Operator-granted lane roots (`workflow.worktreeRoots`, repo-relative,
+  // merged through the lock like every other config key): a full
+  // `add [-b <branch>|--detach] <path> [<ref>]` / `remove [--force] <path>`
+  // is allowed when <path> resolves under one of them. Absent = script
+  // worktrees only, as before.
+  let laneRoots = [];
+  try {
+    const top = git(cwdArg, ['rev-parse', '--show-toplevel']).trim();
+    const wf = loadConfig({ cwd: top }).workflow;
+    const roots = wf && Array.isArray(wf.worktreeRoots) ? wf.worktreeRoots : [];
+    laneRoots = roots.filter(r => typeof r === 'string' && r && !path.isAbsolute(r) && !r.split(/[\\/]/).includes('..'))
+      .map(r => path.join(top, r) + path.sep);
+  } catch {}
+  const removeTarget = a => (a[0] === 'remove' && (a.length === 2 || (a.length === 3 && a[1] === '--force'))) ? a[a.length - 1] : null;
+  const scriptTarget = a => (a[0] === 'add' && a[1] === '--detach' && a.length === 4) ? a[2] : removeTarget(a);
+  const laneTarget = a => {
+    if (a[0] !== 'add') return removeTarget(a);
+    const rest = a.slice(1);
+    let i = 0;
+    if (rest[i] === '-b') i += 2; else if (rest[i] === '--detach') i += 1;
+    const pathArg = rest[i];
+    const tail = rest.length - i; // <path> or <path> <ref>
+    return pathArg && !pathArg.startsWith('-') && (tail === 1 || tail === 2) && !(rest[i + 1] || '').startsWith('-') ? pathArg : null;
+  };
   return segs.every(a => {
-    const target = (a[0] === 'add' && a[1] === '--detach' && a.length === 4) ? a[2]
-      : (a[0] === 'remove' && (a.length === 2 || (a.length === 3 && a[1] === '--force'))) ? a[a.length - 1] : null;
-    return !!target && fold(path.resolve(cwdArg, target)).startsWith(fold(prefix));
+    const s = scriptTarget(a);
+    if (s && under(s, scriptWt)) return true;
+    const t = laneTarget(a);
+    return !!t && laneRoots.some(r => under(t, r));
   });
 }
 
