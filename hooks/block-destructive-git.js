@@ -48,8 +48,31 @@ for (const extra of cfg.extraPatterns || []) {
   try { rules.push([new RegExp(extra.pattern), extra.name || extra.pattern]); } catch { /* bad user regex ignored */ }
 }
 
+// `destructiveGit.mergeBases` (e.g. ["autopilot/*"]): a `gh pr merge <n>` is
+// allowed ONLY when the PR's base branch, as GitHub reports it, matches a
+// listed pattern and is not the repo's default branch — the autopilot
+// integration branch. Anything unverifiable (no number, gh error, base
+// unknown) stays blocked. The project's own merge-evidence gate still runs.
+function mergeBaseAllowed(command) {
+  const pats = Array.isArray(cfg.mergeBases) ? cfg.mergeBases.filter(p => typeof p === 'string' && p) : [];
+  if (!pats.length) return false;
+  const num = (command.match(/\bgh\b[^\n|;&]*\bpr\b[^\n|;&]*\bmerge\b[^\n|;&]*?\s(\d+)\b/) || [])[1];
+  if (!num) return false;
+  const { execSync } = require('child_process');
+  const opts = { cwd: j.cwd || process.cwd(), timeout: 20000, stdio: ['ignore', 'pipe', 'ignore'] };
+  let base, def;
+  try {
+    base = execSync(`gh pr view ${num} --json baseRefName -q .baseRefName`, opts).toString().trim();
+    def = execSync('gh repo view --json defaultBranchRef -q .defaultBranchRef.name', opts).toString().trim();
+  } catch { return false; }
+  if (!base || !def || base === def) return false;
+  const toRe = p => new RegExp('^' + p.split('*').map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+  return pats.some(p => toRe(p).test(base));
+}
+
 for (const [re, name] of rules) {
   if (re.test(cmd)) {
+    if (name.startsWith('gh pr merge') && mergeBaseAllowed(cmd)) continue;
     const counterFile = tmpMark('orch-destrgit', j.session_id || 'nosession');
     let n = 1;
     try { n = parseInt(fs.readFileSync(counterFile, 'utf8'), 10) + 1 || 1; } catch { n = 1; }

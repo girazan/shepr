@@ -67,14 +67,16 @@ One file, `.claude/orch.json`, at your repo root:
 | 🚦 `/shepr:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says. Under `workflow.coordinator` = `loop` or `herdr` (`native | loop | herdr`) each invocation is one Coordinator tick — pick one goal, dispatch one step with a five-line proposal (`workflow.dispatch` = `confirm | auto`), read one verdict, or open one PR — and writes a pulse line; `/loop 10m /shepr:go` is the whole loop vehicle. |
 | 📊 `/shepr:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/shepr:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Reads the Project's existing `Priority` options as the buckets — rename `P0/P1/P2` → `Now/Next/Later` in the Project settings first if you want those names. Fsyncs journal. Read-only after; FLEET footer (delegates, ghosts, pulse age, out-of-scope commits), plus `sync` (mirrors Feature options from the contract); requires GitHub. `html` for shareable page. |
 
-There is no bare `/orch` — always one of these five. [Architecture diagram →](docs/orch-architecture.html)
+| 🌙 `/shepr:auto` | unattended runs | `[Xh|until-stop] [G<n>]`: cuts `autopilot/<date>`, runs the go loop against it, merges passing PRs onto that branch only (never main), measures after each merge, stops on deadline/LIVENESS/flat/decide:human with a handoff, `tmp/OWNER-QUEUE.md` and a draft `autopilot/<date> → main` PR for your one click. Needs `destructiveGit.mergeBases` + `workflow.worktreeRoots`. |
+
+There is no bare `/orch` — always one of these six. [Architecture diagram →](docs/orch-architecture.html)
 
 ## 🧱 Eleven hooks — enforced, not remembered
 
 | Hook | Plain meaning |
 |---|---|
 | 🚢 `contract-ship-gate` | Deny-by-default git surface: every command is refused unless it's read/local or a `commit`/`push` your contract covers — judged by what's actually in your repo, never by the command's arguments. Evidence lint at `board-gh done --goal --step` / `close-goal`: the round manifest chain under `docs/reviews/` is re-derived from git and the locked contract (enforced with a lock entry, advisory without). Worklogs, reviews and ADRs carry a built-in `commit` grant; `git worktree add --detach`/`remove` are allowed only under `<git-common-dir>/orch/wt/` (the review script's test worktrees), plus full `add [-b <branch>] <path> [<ref>]`/`remove` under any repo-relative root listed in `workflow.worktreeRoots` (e.g. `[".worktrees"]`). |
-| 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. |
+| 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. One exception you grant: `destructiveGit.mergeBases` (e.g. `["autopilot/*"]`) lets `gh pr merge <n>` through only when GitHub reports the PR's base matches and is not the default branch — the `/shepr:auto` integration branch. |
 | 🔒 `block-protected-dirs` | Folders you declare untouchable stay untouchable. |
 | 🔍 `read-before-write` | First edit to a critical file is refused until the AI states callers, the test that'd catch a mistake, and the number justifying it. |
 | 🧹 `session-hygiene` | No clocking out of a heavy session without writing down what happened. |

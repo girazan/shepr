@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2 — 2026-09-06
+
+### Added
+- `/shepr:auto [Xh|until-stop] [G<n>]` — unattended autopilot onto an integration branch `autopilot/<date>` that only autopilot merges into; main stays the operator's. Runs /shepr:go's loop phase, merges passing PRs server-side (`gh pr merge --squash`, full gate + Codex), measures after every merge, stops on deadline / LIVENESS / 3 flat rounds / decide:human / operator `stop`, and always leaves a handoff, `tmp/OWNER-QUEUE.md` and a draft review PR `autopilot/<date> → main`.
+- block-destructive-git: `destructiveGit.mergeBases` (e.g. `["autopilot/*"]`) — `gh pr merge <n>` is allowed only when GitHub reports the PR's base matches a pattern AND is not the default branch; no number, gh error, or unknown base stays blocked. Absent = unchanged.
+- `scripts/codex-watch.js` — CRLF-safe Codex verdict watcher: one line per file (`VERDICT: PASS|FAIL` / `QUOTA` / `ENDED`), exits when all reported or on `--timeout`. A `^VERDICT:.*$` multiline regex never matches Codex's `\r\n` output on Windows.
+
 ## 0.8.1 — 2026-09-06
 
 ### Added
