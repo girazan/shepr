@@ -53,26 +53,67 @@ for (const extra of cfg.extraPatterns || []) {
 // listed pattern and is not the repo's default branch — the autopilot
 // integration branch. Anything unverifiable (no number, gh error, base
 // unknown) stays blocked. The project's own merge-evidence gate still runs.
+// A second path onto the DEFAULT branch: `ship: merge` domains (owner-
+// confirmed design 2026-09-06). Pure decision in lib/merge-check.js; this
+// wrapper only fetches what GitHub and git know: base, files, body, the
+// board item behind `Closes #n`, and the review manifests at the PR head.
+let mergeReason = null;
 function mergeBaseAllowed(command) {
   const pats = Array.isArray(cfg.mergeBases) ? cfg.mergeBases.filter(p => typeof p === 'string' && p) : [];
-  if (!pats.length) return false;
+  const mergeDomains = full.contract && full.contract.domains
+    ? Object.values(full.contract.domains).some(d => d && d.ship === 'merge') : false;
+  if (!pats.length && !mergeDomains) return false;
   const num = (command.match(/\bgh\b[^\n|;&]*\bpr\b[^\n|;&]*\bmerge\b[^\n|;&]*?\s(\d+)\b/) || [])[1];
-  if (!num) return false;
+  if (!num) { mergeReason = 'no PR number'; return false; }
   const { execSync } = require('child_process');
-  const opts = { cwd: j.cwd || process.cwd(), timeout: 20000, stdio: ['ignore', 'pipe', 'ignore'] };
+  const cwd = j.cwd || process.cwd();
+  const opts = { cwd, timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 };
   let base, def;
   try {
     base = execSync(`gh pr view ${num} --json baseRefName -q .baseRefName`, opts).toString().trim();
     def = execSync('gh repo view --json defaultBranchRef -q .defaultBranchRef.name', opts).toString().trim();
-  } catch { return false; }
-  if (!base || !def || base === def) return false;
+  } catch { mergeReason = 'gh unreachable'; return false; }
+  if (!base || !def) { mergeReason = 'base unknown'; return false; }
   const toRe = p => new RegExp('^' + p.split('*').map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
-  return pats.some(p => toRe(p).test(base));
+  if (base !== def) return pats.some(p => toRe(p).test(base));
+  if (!mergeDomains) { mergeReason = 'default branch, no ship: merge domain'; return false; }
+  const { mergeCheck } = require('./lib/merge-check');
+  const { parseManifest } = require('./lib/evidence-lint');
+  let pr, item = null, manifests = [];
+  try {
+    pr = JSON.parse(execSync(`gh pr view ${num} --json body,headRefOid,files`, opts).toString());
+  } catch { mergeReason = 'gh pr view failed'; return false; }
+  const itemNo = Number((/\b(?:closes|fixes|resolves)\s+#(\d+)/i.exec(pr.body || '') || [])[1]);
+  if (itemNo) {
+    try {
+      const bg = require('../scripts/board-gh');
+      const root = execSync('git rev-parse --show-toplevel', opts).toString().trim();
+      const bcfg = bg.loadCfg(root);
+      if (bcfg) {
+        const board = bg.readBoard(require('../scripts/lib/gh').makeGh(), bcfg);
+        for (const goal of board.goals) {
+          const it = goal.items.find(i => i.issue === itemNo);
+          if (it) { item = { issue: it.issue, step: it.step, recipe: it.recipe, goal: goal.issue }; break; }
+        }
+      }
+    } catch { item = null; }
+  }
+  try {
+    execSync(`git fetch -q origin ${pr.headRefOid}`, opts);
+    const list = execSync(`git ls-tree --name-only ${pr.headRefOid} docs/reviews/`, opts).toString().split(/\r?\n/).filter(f => /^docs\/reviews\/M\d+\.G\d+\.(S\d+|P)\.R\d+\.md$/.test(f.trim()));
+    manifests = list.map(f => ({ file: f.trim(), ...parseManifest(execSync(`git show ${pr.headRefOid}:${f.trim()}`, opts).toString()) }));
+  } catch { manifests = []; }
+  const r = mergeCheck({ base, defaultBranch: def, files: (pr.files || []).map(f => f.path), body: pr.body, contract: full.contract, item, manifests });
+  if (!r.ok) { mergeReason = r.miss; return false; }
+  return true;
 }
 
-for (const [re, name] of rules) {
+for (let [re, name] of rules) {
   if (re.test(cmd)) {
-    if (name.startsWith('gh pr merge') && mergeBaseAllowed(cmd)) continue;
+    if (name.startsWith('gh pr merge')) {
+      if (mergeBaseAllowed(cmd)) continue;
+      if (mergeReason) name = `${name} — ship: merge refused: ${mergeReason}`;
+    }
     const counterFile = tmpMark('orch-destrgit', j.session_id || 'nosession');
     let n = 1;
     try { n = parseInt(fs.readFileSync(counterFile, 'utf8'), 10) + 1 || 1; } catch { n = 1; }

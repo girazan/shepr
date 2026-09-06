@@ -33,9 +33,12 @@ function parseManifest(text) {
   for (const m of text.matchAll(/^slot-(\d):\s*(\S+) · (\S+) · (\S+) · (pass|fail|inconclusive|missing)\s*$/gm)) {
     slotLines.push({ n: Number(m[1]), file: m[2], model: m[3], tier: m[4], verdict: m[5] });
   }
+  // fallback: slot-<k> <locked model> → <fallback model> (<reason>)  — v0.9.0, one line per substituted slot
+  const fallback = {};
+  for (const m of text.matchAll(/^fallback:\s*slot-(\d)\s+(\S+)\s*→\s*(\S+)\s*\((.*?)\)\s*$/gm)) fallback[Number(m[1])] = { from: m[2], to: m[3], reason: m[4] };
   return { review: field(text, 'review'), goal: ids ? ids[1] : null, step: ids ? ids[2] : null, item: ids ? ids[3] : null,
     rubric: field(text, 'rubric'), base: range ? range[1] : null, head: range ? range[2] : null, paths: field(text, 'paths'),
-    slots: field(text, 'slots'), slotLines, verdict: (field(text, 'verdict') || '').split(/\s/)[0] };
+    slots: field(text, 'slots'), slotLines, fallback, verdict: (field(text, 'verdict') || '').split(/\s/)[0] };
 }
 function isAncestor(git, a, b) { try { git(['merge-base', '--is-ancestor', a, b]); return true; } catch { return false; } }
 const names = out => out.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -128,7 +131,11 @@ function legs(git, m, fz, contract, models) {
     const sl = m.slotLines.find(x => x.n === k);
     const wantModel = k === 1 ? models.review : models['review-alt'];
     if (!wantModel) return `(f) models.${k === 1 ? 'review' : 'review-alt'} not locked`;
-    if (sl.model !== wantModel) return `(f) slot-${k}: model ${sl.model} ≠ locked ${wantModel}`;
+    // A declared fallback (the locked slot model failed to run) is accepted only
+    // when it names the locked model it replaced and the locked fallback model.
+    const fb = m.fallback && m.fallback[k];
+    const okFallback = fb && fb.from === wantModel && models['review-fallback'] && sl.model === models['review-fallback'];
+    if (sl.model !== wantModel && !okFallback) return `(f) slot-${k}: model ${sl.model} ≠ locked ${wantModel}${fb ? ' (fallback not locked as models.review-fallback)' : ''}`;
     if (rankIndex(sl.tier) < rankIndex(floor)) return `(f) slot-${k}: tier ${sl.tier} below ${floor}`;
   }
   return null;

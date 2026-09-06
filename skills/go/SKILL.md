@@ -136,7 +136,22 @@ recorded.
    `none` → hand the operator the exact command + evidence summary.
    `commit`/`push` → run exactly the granted action; the ship-gate hook
    verifies independently — if it blocks, re-read the contract, never
-   retry variants.
+   retry variants. `merge` → `gh pr merge <n> --squash --delete-branch`
+   yourself: the PR body carries Suite / Metric / Baseline / Closes #<item>,
+   and the review the item's recipe demands is already in `docs/reviews/`
+   at the PR head (iterate/fast/cleanup: none · tdd/debug: plan · spec or
+   no recipe: plan + step). The destructive-git hook re-derives all of it
+   from GitHub and git; a refusal names the missing piece — supply it,
+   never retry variants. Every file outside a `merge` domain → back to the
+   operator's click.
+   Rulings you cannot make (`decide: human`, or a call you would rather
+   not own) go to the queue, never to prose:
+   `node "<plugin>/scripts/owner-queue.js" park --item <#> --q "…" --opt a="…" --opt b="…" --rec a --evidence <ptr>`;
+   the item's Feature on the Project decides whether it auto-resolves
+   (`rulings.autoResolveHours`, default 4) or waits for the operator
+   (`rulings.never` features, or no Feature). Run `owner-queue.js tick` at
+   every session start and every loop round; act on `AUTO` lines as
+   rulings and on `WARN` lines by telling the operator.
 3. Board: evidence-before-done — `done --goal G<n> --step S<j> <item#>`
    for each step whose round manifest says `pass` (work.md "Gate
    rounds"; the ship-gate evidence lint verifies the manifest chain at

@@ -23,8 +23,10 @@ function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, '-c', 'core.quotePath=false', ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).toString();
 }
 function defaultSpawn({ model, brief, cwd, env, template }) {
-  // ponytail: one command template for every model; per-model templates when a second family needs its own CLI.
-  const cmd = (template || 'claude -p --model {model} --output-format text').replace('{model}', model);
+  // `review.spawn`: a string template for every model, or an object keyed by
+  // model name with `*` as the default — a second family (Codex) has its own CLI.
+  const tpl = template && typeof template === 'object' ? (template[model] || template['*']) : template;
+  const cmd = (tpl || 'claude -p --model {model} --output-format text').replace('{model}', model);
   return execSync(cmd, { input: brief, cwd, env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 1800000, maxBuffer: 64 * 1024 * 1024 });
 }
 function roster(commonDir, fn) {
@@ -135,11 +137,23 @@ function main(argv, deps = {}) {
     const slotHeader = `review: ${id}\nrubric: ${rubricLine}\nrange: ${base}..${head}\n${plan ? '' : `paths: ${fz.paths.join(' ')}\n`}`;
     const env = { ...process.env, ORCH_ROLE: 'reviewer' }; // explicit child env — a spawner sets it (spec §3)
     const spawn = deps.spawn || defaultSpawn;
+    const fallbacks = [];
     for (let k = 1; k <= slots; k++) {
-      const model = k === 1 ? models.review : models['review-alt'];
-      let out = null;
-      try { out = String(spawn({ model, tier, brief, cwd: wt, env, slot: k, template: cfg.review && cfg.review.spawn })); } catch { out = null; }
-      const vm = out && /^verdict:\s*(pass|fail|inconclusive)\b.*$/m.exec(out);
+      const locked = k === 1 ? models.review : models['review-alt'];
+      let model = locked, out = null, reason = null;
+      const attempt = m => { try { return String(spawn({ model: m, tier, brief, cwd: wt, env, slot: k, template: cfg.review && cfg.review.spawn })); } catch (e) { reason = (e && e.message || 'spawn failed').split('\n')[0].slice(0, 80); return null; } };
+      out = attempt(locked);
+      let vm = out && /^verdict:\s*(pass|fail|inconclusive)\b.*$/m.exec(out);
+      // v0.9.0: the locked model failed to produce a verdict (quota, CLI error,
+      // no verdict line) → models.review-fallback stands in AUTOMATICALLY and the
+      // manifest says so; the lint accepts exactly that substitution.
+      if (!vm && models['review-fallback'] && models['review-fallback'] !== locked) {
+        if (!reason) reason = out ? 'no verdict line' : 'spawn failed';
+        model = models['review-fallback'];
+        out = attempt(model);
+        vm = out && /^verdict:\s*(pass|fail|inconclusive)\b.*$/m.exec(out);
+        fallbacks.push(`fallback: slot-${k} ${locked} → ${model} (${reason})`);
+      }
       const verdict = vm ? vm[1] : 'missing';
       const file = `${id}-${k}.md`;
       // Strip the reviewer's own verdict line AND the newline right after it,
@@ -148,6 +162,7 @@ function main(argv, deps = {}) {
       if (vm) fs.writeFileSync(path.join(revDir, file), `${slotHeader}verdict: ${verdict}\n${body}\n`);
       results.push({ file, model, verdict });
     }
+    results.fallbacks = fallbacks;
   } finally {
     try { g(['worktree', 'remove', '--force', wt]); } catch {}
     roster(commonDir, d => d.filter(x => x.name !== entry.name));
@@ -155,7 +170,7 @@ function main(argv, deps = {}) {
   const verdict = L.aggregate(results.map(r => r.verdict));
   const manifest = [`review: ${id}`, `goal: G${goalN} · step: ${unit} · item: ${item ? `#${item.issue}` : '-'}`, `rubric: ${rubricLine}`, `range: ${base}..${head}`,
     ...(plan ? [] : [`paths: ${fz.paths.join(' ')}`]), `slots: ${slots}`,
-    ...results.map((r, i) => `slot-${i + 1}: ${r.file} · ${r.model} · ${tier} · ${r.verdict}`), `verdict: ${verdict}`].join('\n') + '\n';
+    ...results.map((r, i) => `slot-${i + 1}: ${r.file} · ${r.model} · ${tier} · ${r.verdict}`), ...(results.fallbacks || []), `verdict: ${verdict}`].join('\n') + '\n';
   fs.writeFileSync(path.join(revDir, `${id}.md`), manifest);
   // Evidence-only commit: pathspec-limited in code (script-enforced, spec §5).
   g(['add', '--', 'docs/reviews']);

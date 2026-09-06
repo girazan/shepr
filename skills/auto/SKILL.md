@@ -26,6 +26,11 @@ goal (else /shepr:go's focus rule picks). `status` prints the marker;
 `stop` ends the run at the next safe point (after the current merge or
 measurement, never mid-merge).
 
+With `ship: merge` domains (v0.9.0) a PR whose files all sit in merge
+domains may target main directly and land there under the merge-check;
+the integration branch remains the path for everything else and for
+`decide: human` files. Run `owner-queue.js tick` every round.
+
 ## Preconditions (refuse to launch until all hold)
 
 1. `destructiveGit.mergeBases` lists the autopilot pattern (e.g.

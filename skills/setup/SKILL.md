@@ -19,8 +19,12 @@ without them.
 1. Scan the repo (top-level dirs, build files, README) and propose 3-6
    candidate domains with paths.
 2. For each: whose expertise? `decide: ai | human` ·
-   `ship: push | commit | none` (push ⊃ commit ⊃ none; there is no merge
-   grant — history writers are hook-blocked, the operator runs them) ·
+   `ship: merge | push | commit | none` (merge ⊃ push ⊃ commit ⊃ none;
+   `merge` lets `gh pr merge` land a PR on the default branch when every
+   file is in a merge domain, the body carries Suite/Metric/Baseline/Closes,
+   and the review the step's recipe demands exists under `docs/reviews/` —
+   iterate/fast/cleanup: none · tdd/debug: plan · spec/unrecipe'd: plan +
+   step. Local history writers stay hook-blocked; the operator runs them) ·
    optional `tiers: { work: <role>, review: <role> }` — the MINIMUM model
    tier (`low | mid | high | frontier`) allowed to implement (`work`) and
    review (`review`) in this domain. Floors, not caps; absent = the

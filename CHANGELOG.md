@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0 — 2026-09-06
+
+Owner-confirmed design (grilled 2026-09-06): fewer operator clicks, main no less safe.
+
+### Added
+- Contract rank **`ship: merge`** (⊃ push). `gh pr merge <n>` onto the default branch is allowed when every PR file is in a `merge` domain (evidence paths excepted), the body carries `Suite:` / `Metric:` / `Baseline:` / `Closes #<item>`, and the review the board item's recipe demands exists at the PR head under `docs/reviews/`: `iterate`/`fast`/`cleanup`/`research` none · `tdd`/`debug` a passed plan manifest · `spec` or no recipe plan + step manifests. Pure decision in `hooks/lib/merge-check.js` (unit-tested matrix); `block-destructive-git` fetches base/files/body from GitHub, the item from the board, the manifests from git, and names the missing piece on refusal.
+- **`models.review-fallback`**: when a locked reviewer fails to produce a verdict (quota, CLI error, no verdict line) `shepr review` re-runs that slot with the fallback model automatically and writes `fallback: slot-<k> <locked> → <fallback> (<reason>)` into the manifest; the evidence lint accepts exactly that substitution and nothing else.
+- **`review.spawn` per model**: a string template for every model, or an object keyed by model name with `*` default — a second family (Codex: `codex exec --sandbox read-only -`) has its own CLI.
+- **`scripts/owner-queue.js`** — the ruling queue (`park` / `decide` / `list` / `render` / `tick`): store `.orch/owner-queue.json`, view `tmp/OWNER-QUEUE.md`. Policy by the board item's Feature (`rulings.autoResolveHours`, default 4; `rulings.never` feature names; no Feature = never). `tick` warns at T-1h and auto-resolves to the parked recommendation, appending a `Ruling:` line to the goal's worklog and an audit entry.
+
 ## 0.8.2 — 2026-09-06
 
 ### Added

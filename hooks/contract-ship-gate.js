@@ -14,7 +14,10 @@ const { readStdin, loadConfig, loadLock, appendAudit, AUDIT_REL, resolveRepoKey 
 const { globToRe } = require('./lib/contract');
 const { isEvidence, lint } = require('./lib/evidence-lint');
 
-const RANK = { none: 0, commit: 1, push: 2 };
+// `merge` (v0.9.0) sits above push: it additionally lets `gh pr merge` land a
+// PR on the default branch — decided in block-destructive-git via
+// lib/merge-check, never here (this gate sees only local git verbs).
+const RANK = { none: 0, commit: 1, push: 2, merge: 3 };
 // Deny-by-default: only local/read commands escape the gate untouched.
 // submodule/worktree/clone/init/archive/format-patch/remote/config/clean
 // are deliberately NOT here — each can write history or touch a remote.

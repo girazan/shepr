@@ -39,7 +39,12 @@ One file, `.claude/orch.json`, at your repo root:
 - A domain is a **territory of expertise**, not a risk tier. `numerics` is
   `decide: human` because your judgment is real there; making you sign off
   on `web-ui` would be theater.
-- `ship` is a ladder: `push` ⊃ `commit` ⊃ `none`. **Omission never grants** —
+- `ship` is a ladder: `merge` ⊃ `push` ⊃ `commit` ⊃ `none`. `merge` (v0.9.0)
+  lets the AI land its own PR on the default branch — only when every file
+  is in a `merge` domain, the body carries Suite/Metric/Baseline/Closes, and
+  the review the step's recipe demands exists in git (`iterate`/`fast`: the
+  suite and the metric are the review · `tdd`: a passed plan review ·
+  `spec`/unrecipe'd: plan + step reviews). **Omission never grants** —
   anything matching no domain parks for you, and the AI drafts an amendment
   (an ADR) that only you can ratify.
 - Mirror it into `~/.claude/orch-lock.json` and the locked copy *replaces*
@@ -76,7 +81,7 @@ There is no bare `/orch` — always one of these six. [Architecture diagram →]
 | Hook | Plain meaning |
 |---|---|
 | 🚢 `contract-ship-gate` | Deny-by-default git surface: every command is refused unless it's read/local or a `commit`/`push` your contract covers — judged by what's actually in your repo, never by the command's arguments. Evidence lint at `board-gh done --goal --step` / `close-goal`: the round manifest chain under `docs/reviews/` is re-derived from git and the locked contract (enforced with a lock entry, advisory without). Worklogs, reviews and ADRs carry a built-in `commit` grant; `git worktree add --detach`/`remove` are allowed only under `<git-common-dir>/orch/wt/` (the review script's test worktrees), plus full `add [-b <branch>] <path> [<ref>]`/`remove` under any repo-relative root listed in `workflow.worktreeRoots` (e.g. `[".worktrees"]`). |
-| 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. One exception you grant: `destructiveGit.mergeBases` (e.g. `["autopilot/*"]`) lets `gh pr merge <n>` through only when GitHub reports the PR's base matches and is not the default branch — the `/shepr:auto` integration branch. |
+| 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. Two exceptions you grant: `destructiveGit.mergeBases` (e.g. `["autopilot/*"]`) lets `gh pr merge <n>` through onto a matching non-default branch — the `/shepr:auto` integration branch; and a domain's `ship: merge` lets it through onto the default branch when every PR file is in a merge domain, the body carries Suite/Metric/Baseline/Closes, and the review the item's recipe demands exists at the PR head (`hooks/lib/merge-check.js`). A refusal names the missing piece. |
 | 🔒 `block-protected-dirs` | Folders you declare untouchable stay untouchable. |
 | 🔍 `read-before-write` | First edit to a critical file is refused until the AI states callers, the test that'd catch a mistake, and the number justifying it. |
 | 🧹 `session-hygiene` | No clocking out of a heavy session without writing down what happened. |

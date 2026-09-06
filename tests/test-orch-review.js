@@ -148,5 +148,22 @@ const D3 = commit({ 'src/core/c.js': '1\n' }, 'dev core');
   check('plan round: no item status change', !st.fields['PI_I_151:F_S']);
   check('plan manifests never enter the lint chain', L.lint({ git, contract: CONTRACT, models: MODELS, verb: { kind: 'done', goal: 142, step: 2, item: 152 } }).ok);
 }
+// --- v0.9.0: per-model spawn template + review-fallback ------------------------------------------
+{
+  const { gh } = fakeBoard(200, 'hmi core');
+  const MF = { ...MODELS, 'review-fallback': 'opus-fb' };
+  const r = run(['G200', '--step', 'S1'], { gh, cfg: cfgOf(MF), spawn: a => { if (a.model === 'gpt') throw new Error('usage limit'); return 'verdict: pass\nreasons:\nnotes:\n'; } });
+  const manFile = fs.readdirSync(path.join(REPO, 'docs', 'reviews')).filter(f => /^M53\.G200\.S1\.R\d+\.md$/.test(f)).sort().pop();
+  const man = fs.readFileSync(path.join(REPO, 'docs', 'reviews', manFile), 'utf8');
+  check('fallback: locked slot-2 model failed → review-fallback ran, slot line names it, manifest carries the fallback line, verdict pass', r.code === 0 && r.calls.length === 3 && r.calls[2].model === 'opus-fb' && /^slot-2: \S+ · opus-fb · high · pass$/m.test(man) && /^fallback: slot-2 gpt → opus-fb \(usage limit\)$/m.test(man) && man.endsWith('verdict: pass\n'));
+  check('lint accepts the fallback when models.review-fallback is locked', L.lint({ git, contract: CONTRACT, models: MF, verb: { kind: 'done', goal: 200, step: 1, item: 151 } }).ok);
+  const lr = L.lint({ git, contract: CONTRACT, models: MODELS, verb: { kind: 'done', goal: 200, step: 1, item: 151 } });
+  check('lint rejects the fallback when review-fallback is not locked', !lr.ok && /fallback not locked/.test(lr.miss));
+  const r2 = run(['G200', '--step', 'S1'], { gh, cfg: cfgOf(MODELS), spawn: a => { if (a.model === 'gpt') throw new Error('usage limit'); return 'verdict: pass\nreasons:\nnotes:\n'; } });
+  check('no review-fallback configured → old behaviour (missing, inconclusive, exit 3)', r2.code === 3);
+  const tplCalls = [];
+  const r3 = run(['G142', '--step', 'S2'], { gh: fakeBoard(142, 'hmi').gh, cfg: { ...cfgOf(MODELS), review: { spawn: { '*': 'claude -p --model {model}', gpt: 'codex exec -' } } }, spawn: a => { tplCalls.push(a.template); return 'verdict: pass\nreasons:\nnotes:\n'; } });
+  check('per-model spawn template object reaches the spawner', r3.code === 0 && tplCalls[0] && tplCalls[0].gpt === 'codex exec -');
+}
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
