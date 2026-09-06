@@ -164,7 +164,49 @@ check('paneName is impl-G<k>-S<j>', C.paneName('G142', 'S2') === 'impl-G142-S2')
   check('main proposal: missing fields refused, none audited', c2 === 1 && /proposal: --step/.test(out) && fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').length === audit.length);
 }
 
+// --- fix rounds (spec §5, d.23, d.24) ---------------------------------------------------
+check('noProgress: same first error line twice → stall', C.noProgress([{ error: 'x', diffEmpty: false }, { error: 'TypeError: a is null', diffEmpty: false }, { error: 'TypeError: a is null', diffEmpty: false }]) === 'same error 2× in a row: TypeError: a is null');
+check('noProgress: empty diff twice → stall', C.noProgress([{ error: 'a', diffEmpty: true }, { error: 'b', diffEmpty: true }]) === 'empty diff 2× in a row');
+check('noProgress: one round, or different errors → null', C.noProgress([{ error: 'a', diffEmpty: true }]) === null && C.noProgress([{ error: 'a' }, { error: 'b' }]) === null);
+check('fixRound: fails 1–2 resume the resident at its tier', C.fixRound({ fails: 1, history: [{ error: 'a' }], tier: 'mid' }).action === 'resume' && C.fixRound({ fails: 2, history: [{ error: 'a' }, { error: 'b' }], tier: 'mid' }).tier === 'mid');
+check('fixRound: fail 3 → fresh pane one tier up', JSON.stringify(C.fixRound({ fails: 3, history: [{ error: 'a' }, { error: 'b' }, { error: 'c' }], tier: 'mid' })) === '{"action":"fresh","tier":"high"}');
+check('fixRound: frontier cannot go higher', C.fixRound({ fails: 3, history: [], tier: 'frontier' }).tier === 'frontier');
+check('fixRound: no-progress wins over the count', C.fixRound({ fails: 2, history: [{ error: 'z' }, { error: 'z' }], tier: 'mid' }).action === 'stall');
+check('fixRound: a fourth fail is a stall', C.fixRound({ fails: 4, history: [], tier: 'mid' }).reason === 'fail cap 3 reached');
 
-console.log(`
-${pass}/${n} pass`);
+// --- verdict → verb ---------------------------------------------------------------------
+const V = { goal: 'G142', step: 'S2', item: 151, manifestPath: 'docs/reviews/M53.G142.S2.R1.md' };
+check('pass → done --goal --step', C.verdictAction({ ...V, verdict: 'pass' }).cmd === 'done --goal G142 --step S2 151');
+check('fail → item back to In progress, hand-back', C.verdictAction({ ...V, verdict: 'fail' }).cmd === 'set-status 151 "In progress"' && C.verdictAction({ ...V, verdict: 'fail' }).next === 'handback');
+check('inconclusive → attention naming the manifest', C.verdictAction({ ...V, verdict: 'inconclusive' }).cmd === 'attention G142 "inconclusive: docs/reviews/M53.G142.S2.R1.md"');
+check('unknown verdict → refused', C.verdictAction({ ...V, verdict: null }).cmd === null && /no verdict/.test(C.verdictAction({ ...V, verdict: null }).next));
+
+// --- hand-back is never bare --------------------------------------------------------------
+const HB = C.handback({ round: 'R1', manifestText: 'review: M53.G142.S2.R1\nverdict: fail\nreasons: accept #2 unmet\n', failingOutput: 'FAIL 3. gate wired\nTypeError: a is null', conflicts: '' });
+check('handback carries the round, manifest and failing output', /^ROUND R1: FAIL\n/.test(HB) && HB.includes('reasons: accept #2 unmet') && HB.includes('--- failing output ---\nFAIL 3. gate wired'));
+let threw = false; try { C.handback({ round: 'R1', manifestText: 'verdict: fail\n', failingOutput: '' }); } catch { threw = true; }
+check('handback with no reasons and no output throws (bare retry)', threw);
+check('firstError picks the first error-looking line', C.firstError('ok 1\nFAIL 3. gate wired\nTypeError: a is null') === 'FAIL 3. gate wired' && C.firstError('') === null);
+
+// main: fix-round reads manifests + handback audit lines; verdict pulses the manifest.
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');
+  const rv = path.join(CWD, 'docs', 'reviews'); fs.mkdirSync(rv, { recursive: true });
+  fs.writeFileSync(path.join(rv, 'M53.G142.S2.R1.md'), 'review: M53.G142.S2.R1\nverdict: fail\nreasons: r\n');
+  fs.writeFileSync(path.join(rv, 'M53.G142.S2.R2.md'), 'review: M53.G142.S2.R2\nverdict: inconclusive\n');
+  fs.writeFileSync(path.join(rv, 'M53.G142.S2.R3.md'), 'review: M53.G142.S2.R3\nverdict: fail\nreasons: r\n');
+  fs.writeFileSync(path.join(rv, 'M53.G142.S2.R3-1.md'), 'slot file\nverdict: fail\n');
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), now: T0 };
+  let out = '';
+  C.main(['handback', '--goal', 'G142', '--step', 'S2', '--round', 'R1', '--output', path.join(rv, 'M53.G142.S2.R1.md')], { ...deps, stdout: s => { out += s; } });
+  check('main handback: audits {by:"handback", error, diffEmpty}', /by":"handback"/.test(fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8')) && /^ROUND R1: FAIL/.test(out));
+  out = ''; const c = C.main(['fix-round', '--goal', 'G142', '--step', 'S2', '--tier', 'mid'], { ...deps, stdout: s => { out += s; } });
+  const j = JSON.parse(out);
+  check('main fix-round: fails counts fail manifests only (2, slot files excluded) → resume', c === 0 && j.fails === 2 && j.action === 'resume');
+  out = ''; C.main(['verdict', '--goal', 'G142', '--step', 'S2', '--item', '151'], { ...deps, stdout: s => { out += s; } });
+  const v = JSON.parse(out);
+  check('main verdict: highest round, verb line, pulse with manifest', v.manifest === 'docs/reviews/M53.G142.S2.R3.md' && v.cmd === 'set-status 151 "In progress"' && /"action":"verdict","manifest":"docs\/reviews\/M53.G142.S2.R3.md"/.test(fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8')));
+}
+
+console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

@@ -169,6 +169,41 @@ function launch({ commonDir, cwd, name, role, milestone, goal, step, tier, vehic
   return { roster };
 }
 
+// No-progress detection, N = 2 (d.23): the last N hand-backs all had an empty
+// diff, or all carried the same first error line.
+function noProgress(history, N = 2) {
+  const last = (history || []).slice(-N);
+  if (last.length < N) return null;
+  if (last.every(h => h.diffEmpty)) return `empty diff ${N}× in a row`;
+  if (last[0].error && last.every(h => h.error === last[0].error)) return `same error ${N}× in a row: ${last[0].error}`;
+  return null;
+}
+const tierUp = t => RANKS[Math.min(Math.max(RANKS.indexOf(t), 0) + 1, RANKS.length - 1)];
+// Fix rounds count `fail` manifests only (spec §5); rounds 1–2 resume the
+// resident, 3 = fresh one tier up (delegate.md), anything else = stall → Director.
+function fixRound({ fails, history, tier }) {
+  const stall = noProgress(history);
+  if (stall) return { action: 'stall', reason: stall };
+  if (fails <= 2) return { action: 'resume', tier };
+  if (fails === 3) return { action: 'fresh', tier: tierUp(tier) };
+  return { action: 'stall', reason: 'fail cap 3 reached' };
+}
+// Manifest verdict → the board-gh verb the Coordinator types (spec §4 item Status row).
+function verdictAction({ verdict, goal, step, item, manifestPath }) {
+  if (verdict === 'pass') return { cmd: `done --goal ${goal} --step ${step} ${item}`, next: 'next-step-or-merge-gate' };
+  if (verdict === 'fail') return { cmd: `set-status ${item} "In progress"`, next: 'handback' };
+  if (verdict === 'inconclusive') return { cmd: `attention ${goal} "inconclusive: ${manifestPath}"`, next: 'director' };
+  return { cmd: null, next: `no verdict line in ${manifestPath}` };
+}
+const firstError = out => (out || '').split(/\r?\n/).find(l => /\b(FAIL|Error|error:|Exception|panic|BLOCKED)\b/.test(l)) || null;
+// Ralphinho: a hand-back is never a bare retry — manifest reasons and the failing output travel with it.
+function handback({ round, manifestText, failingOutput, conflicts }) {
+  const reasons = /^reasons:/m.test(manifestText || '');
+  if (!reasons && !(failingOutput || '').trim()) throw new Error('handback: nothing to hand back — a bare retry is refused; attach the failing output');
+  return [`ROUND ${round}: FAIL`, '', (manifestText || '').trim(), '', '--- failing output ---', (failingOutput || '').trim(),
+    ...(conflicts && conflicts.trim() ? ['', '--- conflict context ---', conflicts.trim()] : []), ''].join('\n');
+}
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -236,10 +271,40 @@ function main(argv, deps = {}) {
       stdout(`${r.roster}\n`);
       return 0;
     },
+    handback() {
+      for (const k of ['goal', 'step', 'round', 'output']) if (typeof opt[k] !== 'string') { stdout(`handback: --${k} <value> is required\n`); return 1; }
+      const m = manifestsFor(cwd, opt.goal, opt.step).find(x => x.path.endsWith(`.${opt.round}.md`));
+      const failing = fs.existsSync(opt.output) ? fs.readFileSync(opt.output, 'utf8') : '';
+      const conflicts = typeof opt.conflicts === 'string' && fs.existsSync(opt.conflicts) ? fs.readFileSync(opt.conflicts, 'utf8') : '';
+      let text;
+      try { text = handback({ round: opt.round, manifestText: m ? m.text : '', failingOutput: failing, conflicts }); } catch (e) { stdout(e.message + '\n'); return 1; }
+      const diffEmpty = opt['diff-empty'] === true || opt['diff-empty'] === 'true';
+      appendAudit(cwd, { by: 'handback', goal: opt.goal, step: opt.step, round: opt.round, error: firstError(failing), diffEmpty });
+      stdout(text);
+      return 0;
+    },
+    'fix-round'() {
+      for (const k of ['goal', 'step', 'tier']) if (typeof opt[k] !== 'string') { stdout(`fix-round: --${k} <value> is required\n`); return 1; }
+      const fails = manifestsFor(cwd, opt.goal, opt.step).filter(m => verdictOf(m.text) === 'fail').length;
+      const history = readAudit(cwd).filter(e => e.by === 'handback' && e.goal === opt.goal && e.step === opt.step).map(e => ({ error: e.error, diffEmpty: !!e.diffEmpty }));
+      stdout(JSON.stringify({ fails, ...fixRound({ fails, history, tier: opt.tier }) }) + '\n');
+      return 0;
+    },
+    verdict() {
+      for (const k of ['goal', 'step', 'item']) if (typeof opt[k] !== 'string') { stdout(`verdict: --${k} <value> is required\n`); return 1; }
+      const ms = manifestsFor(cwd, opt.goal, opt.step).sort((a, b) => roundOf(a.path) - roundOf(b.path));
+      const last = ms[ms.length - 1];
+      if (!last) { stdout(`verdict: no manifest for ${opt.goal} ${opt.step} under docs/reviews/\n`); return 1; }
+      const v = verdictAction({ verdict: verdictOf(last.text), goal: opt.goal, step: opt.step, item: opt.item, manifestPath: last.path });
+      appendAudit(cwd, { by: 'pulse', goal: opt.goal, action: 'verdict', manifest: last.path, tick: new Date(now).toISOString() });
+      stdout(JSON.stringify({ manifest: last.path, verdict: verdictOf(last.text), ...v }) + '\n');
+      return v.cmd ? 0 : 1;
+    },
   };
   if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch };
+module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch,
+  noProgress, fixRound, verdictAction, handback, firstError };
