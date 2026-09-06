@@ -108,5 +108,63 @@ const base = { contract: CONTRACT, lsFiles: LS, roster: ROSTER, audit: AUDIT, no
   check('main tick: board unreachable → exit 1, says so, no pulse', c2 === 1 && /board unreachable: gh: HTTP 502/.test(out) && fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').length === 1);
 }
 
-console.log(`\n${pass}/${n} pass`);
+// --- proposal (d.29) — five lines, pinned ------------------------------------------
+const P = { goal: 'G142', step: 'S2', item: 151, text: 'gate wired', role: 'dev', tier: 'mid', recipe: 'tdd', task: 'wire the ship gate to the GATE block',
+  domains: ['hmi', 'numerics'], ship: 'none', review: 'single', fails: 0, fleet: { count: 2, capacity: 6 }, kill: '3 sessions' };
+const FIVE = [
+  'goal/step:        G142 · S2 · #151 · gate wired',
+  'role/tier/recipe: dev · mid · tdd',
+  'task:             wire the ship gate to the GATE block',
+  'domains/ship:     hmi, numerics · ship:none · review:single',
+  'caps:             fails 0/3 · no-progress 2 · fleet 2/6 · kill: 3 sessions' ].join('\n');
+check('proposal is exactly five lines in the pinned shape', C.proposal(P) === FIVE);
+check('proposal without a kill line says so', /kill: —$/.test(C.proposal({ ...P, kill: null })));
+check('paneName is impl-G<k>-S<j>', C.paneName('G142', 'S2') === 'impl-G142-S2');
+
+// --- launch: roster + herdr commands -------------------------------------------
+// ASSUMPTION CORRECTED (Task 3 Step 0 — herdr --help / agent start --help /
+// agent wait --help): the real CLI has no `--env` on `agent start` (it only
+// takes --kind <KIND> --pane <ID>, attaching to an existing interactive
+// pane); env vars are set at pane creation, `herdr pane split --env K=V`.
+// `wait` is `herdr agent wait <target> --until …`, not a top-level `herdr
+// wait`. Plan 3 also never grew an ORCH_MARKER lookup — hooks/lib/session.js
+// keys the marker by the pane's real Claude session_id and materialises it
+// lazily from ORCH_ROLE/ORCH_IDS env (hooks/session-start.js) — so launch()
+// does not pre-create a marker file; it only sets that env on the new pane.
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const REPO = path.join(SCRATCH, 'repo'); const COMMON = path.join(REPO, '.git');
+  const BRIEF = path.join(SCRATCH, 'brief.md'); fs.writeFileSync(BRIEF, 'TASK: x\n');
+  const calls = []; const exec = (cmd, args) => { calls.push([cmd, ...args]); return cmd === 'herdr' && args[0] === 'pane' ? 'pane-7\n' : ''; };
+  const r = C.launch({ commonDir: COMMON, cwd: REPO, name: 'impl-G142-S2', role: 'dev', milestone: 'M53', goal: 'G142', step: 'S2', tier: 'mid', vehicle: 'herdr', brief: BRIEF, exec, now: T0 });
+  const roster = JSON.parse(fs.readFileSync(r.roster, 'utf8'));
+  const d = roster.delegates.find(x => x.name === 'impl-G142-S2');
+  check('launch upserts a running roster entry in the v2 §3.1 shape', d && d.lane === 'G142' && d.role === 'mid' && d.vehicle === 'herdr' && d.status === 'running' && d.brief === BRIEF && d.createdAt === new Date(T0).toISOString() && d.lastSeen === d.createdAt);
+  check('launch (herdr): pane split with ORCH_ROLE/ORCH_IDS env, then agent start --kind/--pane, then agent prompt with the brief text',
+    calls.length === 3 &&
+    calls[0][0] === 'herdr' && calls[0][1] === 'pane' && calls[0][2] === 'split' && calls[0].includes('ORCH_ROLE=dev') && calls[0].includes('ORCH_IDS=M53.G142.S2') &&
+    calls[1][0] === 'herdr' && calls[1].slice(1, 3).join(' ') === 'agent start' && calls[1][3] === 'impl-G142-S2' && calls[1].includes('--kind') && calls[1].includes('--pane') && calls[1].includes('pane-7') &&
+    calls[2][0] === 'herdr' && calls[2].slice(1, 3).join(' ') === 'agent prompt' && calls[2][3] === 'impl-G142-S2' && calls[2][4] === 'TASK: x\n');
+  calls.length = 0;
+  C.launch({ commonDir: COMMON, cwd: REPO, name: 'impl-G142-S2', role: 'dev', milestone: 'M53', goal: 'G142', step: 'S2', tier: 'high', vehicle: 'loop', brief: BRIEF, exec, now: T0 + 60000 });
+  const again = JSON.parse(fs.readFileSync(r.roster, 'utf8')).delegates.filter(x => x.name === 'impl-G142-S2');
+  check('launch (loop): no herdr call; re-launch replaces the entry, never duplicates', calls.length === 0 && again.length === 1 && again[0].role === 'high' && again[0].vehicle === 'loop');
+}
+// main: proposal prints the five lines and audits them; launch wires through.
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');
+  let out = '';
+  const code = C.main(['proposal', '--goal', 'G142', '--step', 'S2', '--item', '151', '--text', 'gate wired', '--role', 'dev', '--tier', 'mid', '--recipe', 'tdd', '--task', 'wire the ship gate to the GATE block', '--domains', 'hmi,numerics', '--ship', 'none', '--review', 'single', '--fails', '0', '--kill', '3 sessions', '--mode', 'auto'],
+    { cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; }, now: T0 });
+  const audit = fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const last = audit[audit.length - 1];
+  check('main proposal: prints the five lines, audits {by:"dispatch", mode, lines}', code === 0 && out.trim().split('\n').slice(0, 5).join('\n') === FIVE.replace('fleet 2/6', 'fleet 1/6') && last.by === 'dispatch' && last.mode === 'auto' && last.goal === 'G142' && last.step === 'S2' && last.lines.length === 5);
+  check('main proposal: fleet count read from the roster', /fleet 1\/6/.test(out));
+  out = '';
+  const c2 = C.main(['proposal', '--goal', 'G142'], { cwd: CWD, commonDir: path.join(CWD, '.git'), stdout: s => { out += s; } });
+  check('main proposal: missing fields refused, none audited', c2 === 1 && /proposal: --step/.test(out) && fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8').trim().split('\n').length === audit.length);
+}
+
+
+console.log(`
+${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

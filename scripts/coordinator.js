@@ -123,6 +123,52 @@ function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, w
   return { action: 'dispatch', ...out };
 }
 
+// The five-line dispatch proposal (d.29). Shown via AskUserQuestion under
+// dispatch:"confirm"; written to the audit log under "auto". Pinned by the
+// coordinator skill and tests/test-grammar.js — change both or neither.
+function proposal(p) {
+  const pad = k => (k + ':').padEnd(18);
+  return [
+    `${pad('goal/step')}${p.goal} · ${p.step} · #${p.item} · ${p.text}`,
+    `${pad('role/tier/recipe')}${p.role} · ${p.tier} · ${p.recipe}`,
+    `${pad('task')}${p.task}`,
+    `${pad('domains/ship')}${p.domains.join(', ')} · ship:${p.ship} · review:${p.review}`,
+    `${pad('caps')}fails ${p.fails}/3 · no-progress 2 · fleet ${p.fleet.count}/${p.fleet.capacity} · kill: ${p.kill || '—'}`,
+  ].join('\n');
+}
+const paneName = (goal, step) => `impl-${goal}-${step}`;
+
+// Pane launch: roster entry (v2 §3.1) under the roster lock, and — herdr
+// only — the CLI calls. Under loop/native the skill spawns the Agent itself
+// afterwards. ASSUMPTION VERIFIED against `herdr --help`/`herdr agent
+// start --help`/`herdr agent wait --help` at execution: `agent start` has
+// no `--env` (only --kind/--pane, attaching to an existing interactive
+// pane); env is set at pane creation instead (`pane split --env K=V`), and
+// wait is `herdr agent wait <target> --until …`. The session marker itself
+// is plan 3's job: hooks/session-start.js materialises it from the pane's
+// ORCH_ROLE/ORCH_IDS env once Claude's own session_id exists — this script
+// never writes a marker file.
+function launch({ commonDir, cwd, name, role, milestone, goal, step, tier, vehicle, brief, exec, now }) {
+  const dir = path.join(commonDir, 'orch');
+  fs.mkdirSync(dir, { recursive: true });
+  const startedAt = new Date(now || Date.now()).toISOString();
+  const roster = path.join(dir, 'fleet.json');
+  withLock(path.join(dir, 'fleet.lock'), () => {
+    let r = { delegates: [] };
+    try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { /* first entry */ }
+    r.delegates = (r.delegates || []).filter(d => d.name !== name);
+    r.delegates.push({ name, lane: goal, role: tier, vehicle, status: 'running', ownerSessionId: null, agentId: null, brief, createdAt: startedAt, lastSeen: startedAt });
+    fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
+  });
+  if (vehicle === 'herdr') {
+    const ids = `${milestone}.${goal}.${step}`;
+    const paneId = String(exec('herdr', ['pane', 'split', '--cwd', cwd || process.cwd(), '--env', `ORCH_ROLE=${role}`, '--env', `ORCH_IDS=${ids}`])).trim();
+    exec('herdr', ['agent', 'start', name, '--kind', 'claude', '--pane', paneId]);
+    exec('herdr', ['agent', 'prompt', name, fs.readFileSync(brief, 'utf8')]);
+  }
+  return { roster };
+}
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -171,10 +217,29 @@ function main(argv, deps = {}) {
       stdout(JSON.stringify(t, null, 2) + '\n');
       return 0;
     },
+    proposal() {
+      const need = ['goal', 'step', 'item', 'text', 'role', 'tier', 'recipe', 'task', 'domains', 'ship', 'review'];
+      for (const k of need) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`proposal: --${k} <value> is required\n`); return 1; }
+      const p = { ...opt, domains: opt.domains.split(/[,\s]+/).filter(Boolean), fails: Number(opt.fails || 0), kill: typeof opt.kill === 'string' ? opt.kill : null,
+        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6) };
+      const lines = proposal(p).split('\n');
+      appendAudit(cwd, { by: 'dispatch', mode: opt.mode === 'auto' ? 'auto' : 'confirm', goal: opt.goal, step: opt.step, lines });
+      stdout(lines.join('\n') + '\n');
+      return 0;
+    },
+    launch() {
+      const name = pos[1];
+      for (const k of ['role', 'goal', 'step', 'milestone', 'tier', 'vehicle', 'brief']) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`launch: --${k} <value> is required\n`); return 1; }
+      if (!name) { stdout('usage: launch <pane name> --role … --goal … --step … --milestone … --tier … --vehicle loop|herdr --brief <file>\n'); return 1; }
+      const r = launch({ commonDir, cwd, name, role: opt.role, milestone: opt.milestone, goal: opt.goal, step: opt.step, tier: opt.tier, vehicle: opt.vehicle, brief: opt.brief,
+        exec: deps.exec || ((c, a) => sh(cwd, c, a)), now });
+      stdout(`${r.roster}\n`);
+      return 0;
+    },
   };
   if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main };
+module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch };
