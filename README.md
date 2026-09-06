@@ -74,7 +74,9 @@ One file, `.claude/orch.json`, at your repo root:
 
 | 🌙 `/shepr:auto` | unattended runs | `[Xh|until-stop] [G<n>]`: cuts `autopilot/<date>`, runs the go loop against it, merges passing PRs onto that branch only (never main), measures after each merge, stops on deadline/LIVENESS/flat/decide:human with a handoff, `tmp/OWNER-QUEUE.md` and a draft `autopilot/<date> → main` PR for your one click. Needs `destructiveGit.mergeBases` + `workflow.worktreeRoots`. |
 
-There is no bare `/orch` — always one of these six. [Architecture diagram →](docs/orch-architecture.html)
+| 📱 `/shepr:assistant` | `/loop 2h`, own pane | one tick of the owner channel: parked rulings → Telegram with a/b/c buttons, button presses → decisions, four allowlisted phone commands relayed, a ≤25-line progress card. Needs `~/.claude/shepr-secrets.json` with `telegram.token` + `telegram.chatId`. Never rules, edits, or merges. |
+
+There is no bare `/orch` — always one of these seven. [Architecture diagram →](docs/orch-architecture.html)
 
 ## 🧱 Eleven hooks — enforced, not remembered
 

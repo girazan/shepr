@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 — 2026-09-06
+
+### Added
+- `/shepr:assistant` — the owner-facing role (`ORCH_ROLE=assistant`, run as `/loop 2h /shepr:assistant`): one idempotent tick that runs `owner-queue tick`, drains Telegram button presses into the queue, posts new rulings with a/b/c inline buttons, relays the four allowlisted phone commands (`stop`, `status`, `focus G<n>`, `digest now`) to `tmp/handoffs/assistant-relay.md`, and sends a ≤25-line progress card (milestone bars + deltas, merges, open rulings, blocked lanes) to Telegram and, daily or on demand, the milestone issue. Never rules, edits, merges, or types into another pane.
+- `scripts/telegram.js` — Bot API over `fetch`, no dependency: `send`, `ruling R<n>` / `rulings` (inline buttons), `poll [--once]` (callback → `owner-queue decide … --by telegram`; chat-id allowlist; relay allowlist; offset persisted), `digest --file`. Secrets live in `~/.claude/shepr-secrets.json` (`telegram.token`, `telegram.chatId`) — never in a repo; exit 78 with the BotFather hint when absent.
+
 ## 0.9.0 — 2026-09-06
 
 Owner-confirmed design (grilled 2026-09-06): fewer operator clicks, main no less safe.
