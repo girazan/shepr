@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.3 — 2026-09-06
+
+### Added
+- **`workflow.laneRebase: true`** — a lane may `git rebase` (incl. `--continue`/`--abort`) its OWN branch from a worktree under `workflow.worktreeRoots`; refused from the main checkout, on the default branch, or with any `-C`/`cd` retarget. Owner-confirmed 2026-09-06 ("lane rebases + revert PRs"). Conflicts still stop the lane and go to the operator.
+- **`rulings.onDecision`** — shell template run by `owner-queue decide` on every decision (`{id} {opt} {by} {item} {goal}`), e.g. `herdr agent prompt coordinator "RULING {id} DECIDED ({opt}) …"`: a decision nobody reads is a decision not made.
+- Telegram: a visible receipt is replied under the card after a press (`✅ R12 → (b) recorded 15:09 UTC · coordinator woken`); the persistent poller survives network errors (logs `POLL-ERROR`, retries after 15 s). Assistant skill: run the poller as a persistent process, never `poll --once` beside it.
+- Role rule written down: only the orchestrator/coordinator parks or decides rulings; lanes report `NEEDS RULING: …` and stop that item (delegate.md brief line, coordinator.md handling).
+
+### Fixed
+- **Contract was OFF inside every linked worktree.** `loadConfig` looked for `.claude/orch.json` only under the hook's cwd; a lane worktree has none (the file is rarely tracked), so the ship-gate and destructive-git guard saw "no contract" and exited 0 — `git merge`/`rebase`/anything passed in `.worktrees/*`. The loader now falls back to the main checkout (parent of the git common dir). Regression-tested with a real worktree in test-ship-gate.
+
 ## 0.9.2 — 2026-09-06
 
 ### Changed

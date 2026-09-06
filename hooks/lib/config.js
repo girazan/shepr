@@ -69,18 +69,25 @@ function loadConfig(j) {
   const roots = [];
   if (j && j.cwd) roots.push(j.cwd);
   roots.push(process.cwd());
-  for (const r of roots) {
+  // v0.9.3: a LINKED WORKTREE has no .claude/orch.json of its own (the file
+  // is rarely tracked), and "no config" used to mean "no contract" — every
+  // lane worktree ran ungated. The main checkout (parent of the git common
+  // dir) is the config's home for every worktree of the repo.
+  let found = false;
+  const tryRoot = (r) => {
     const p = path.join(r, '.claude', 'orch.json');
     try {
-      if (fs.existsSync(p)) { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); break; }
+      if (fs.existsSync(p)) { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); found = true; return true; }
     } catch {
-      // Bad config never breaks a hook — but silently losing the guards the
-      // user configured is worse than noise. Warn; blocking hooks see the
-      // corruption and fail closed instead of running ungated.
       console.error(`orch: WARNING — ${p} is not valid JSON; configured guards are INACTIVE until fixed.`);
-      corrupt = true;
-      break;
+      corrupt = true; return true;
     }
+    return false;
+  };
+  for (const r of roots) if (tryRoot(r)) break;
+  if (!found && !corrupt) {
+    const common = resolveRepoKey((j && j.cwd) || process.cwd());
+    if (common) tryRoot(path.dirname(common));
   }
   const lock = loadLock();
   const lockVal = lock.value || {};

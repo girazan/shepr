@@ -27,9 +27,15 @@ the file; `scripts/telegram.js` exits 78 with that hint otherwise).
 1. `node "<plugin>/scripts/owner-queue.js" tick` — read its lines:
    `WARN` → include in this tick's card; `AUTO` → post the Ruling line
    to Telegram as-is (it is already in the worklog and audit).
-2. `node "<plugin>/scripts/telegram.js" poll --once` — button presses
-   become decisions (`--by telegram`); allowlisted texts (`stop`, `status`,
-   `focus G<n>`, `digest now`) land in `.orch/assistant-inbox.jsonl`. For
+2. Make sure the PERSISTENT poller is alive — `node "<plugin>/scripts/telegram.js" poll`
+   (no `--once`) as a detached background process logging to
+   `tmp/telegram-poll.log`; start it if `.orch/telegram-poll.pid` names a
+   dead process. It long-polls Telegram, so a button press is acknowledged
+   within seconds, not at the next tick: presses become decisions
+   (`--by telegram`), buttons are removed, and allowlisted texts (`stop`,
+   `status`, `focus G<n>`, `digest now`) land in `.orch/assistant-inbox.jsonl`.
+   A tick-only `poll --once` is the fallback when a background process is
+   not possible — then the phone waits for the tick. For
    each inbox line not yet handled: `status`/`digest now` → send the card
    now; `stop`/`focus G<n>` → write `tmp/handoffs/assistant-relay.md` with
    the line for the orchestrator (the orchestrator reads it at its next

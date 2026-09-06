@@ -59,6 +59,10 @@ An implementation brief thinner than ~15 lines is under-specified —
 fill it out before dispatch; vague briefs buy fix rounds. Recon/scan
 briefs may be shorter, but keep all eight headings.
 
+Every MUST NOT carries this line verbatim — a lane never parks or
+decides a ruling; only the orchestrator writes the queue:
+`Rulings: if a question needs the operator, write "NEEDS RULING: <question> · options a/b/c · evidence <pointer>" in your report, stop that item, continue with the next. Never run owner-queue.js, never ask the operator in prose, never guess a decide:human value.`
+
 On a step dispatch, MUST DO opens with the recipe's stages (copied from `skills/go/recipes/<recipe>.md`, in order) before any other constraint.
 CONTEXT names only this goal's worklog and the ADRs the step lists — never another goal's handoff, never the full plan.
 

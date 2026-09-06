@@ -261,6 +261,30 @@ check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.joi
   setCfgRaw(saved);
 }
 
+// Lane rebase (workflow.laneRebase, v0.9.3): only from a worktree under a granted root, on a non-default branch.
+{
+  const saved = fs.readFileSync(CFG, 'utf8');
+  const WTR = path.join(REPO, '.worktrees', 'lane-r');
+  g('worktree', 'add', '-b', 'lane/r', WTR, 'HEAD');
+  const runAt = (cmd, cwd) => {
+    const payload = JSON.stringify({ session_id: 's', cwd, tool_input: { command: cmd } });
+    try { execFileSync('node', [HOOK], { input: payload, cwd, env: { ...process.env, HOME: FAKEHOME, USERPROFILE: FAKEHOME, ORCH_ROLE: '' }, stdio: ['pipe', 'pipe', 'pipe'] }); return 0; }
+    catch (e) { return e.status; }
+  };
+  setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['.worktrees'] } });
+  check('laneRebase absent: rebase in a lane worktree -> 2', runAt('git rebase origin/main', WTR) === 2);
+  setCfg({ ...JSON.parse(saved), workflow: { worktreeRoots: ['.worktrees'], laneRebase: true } });
+  check('laneRebase: rebase in a lane worktree on lane/r -> 0', runAt('git rebase origin/main', WTR) === 0);
+  check('laneRebase: rebase --continue in the lane worktree -> 0', runAt('git rebase --continue', WTR) === 0);
+  check('laneRebase: rebase from the main checkout -> 2', runAt('git rebase origin/main', REPO) === 2);
+  check('laneRebase: -C retarget into the worktree -> 2', runAt(`git -C "${WTR}" rebase origin/main`, REPO) === 2);
+  check('laneRebase: merge still -> 2', runAt('git merge origin/main', WTR) === 2);
+  setCfg({ ...JSON.parse(saved), workflow: { laneRebase: true } });
+  check('laneRebase without worktreeRoots -> 2', runAt('git rebase origin/main', WTR) === 2);
+  g('worktree', 'remove', '--force', WTR);
+  setCfgRaw(saved);
+}
+
 writeFile('docs/d34.md');
 g('add', 'docs/d34.md');
 check('34. blocked word inside commit MESSAGE is fine -> 0', run('git commit -m "revert the parser fix"').code === 0);

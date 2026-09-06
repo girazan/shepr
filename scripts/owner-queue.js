@@ -78,7 +78,17 @@ function main(argv, deps = {}) {
     if (!r || !o._[2] || !r.opt[o._[2]]) { say('usage: owner-queue decide R<n> <opt> [--by owner|auto|telegram]'); return 64; }
     if (r.decided) { say(`${r.id} already decided (${r.decided.opt}) by ${r.decided.by}`); return 0; }
     r.decided = { opt: o._[2], by: o.by || 'owner', at: now.toISOString() }; save();
-    say(`${r.id} decided (${o._[2]}) by ${r.decided.by}`); return 0;
+    say(`${r.id} decided (${o._[2]}) by ${r.decided.by}`);
+    // rulings.onDecision: a shell template that WAKES the coordinator (e.g.
+    // `herdr agent prompt coordinator "RULING {id} DECIDED ({opt}) …"`) — a
+    // decision nobody reads is a decision not made. Fire-and-forget, 15 s cap.
+    const tpl = rl.onDecision;
+    if (typeof tpl === 'string' && tpl.trim()) {
+      const cmd = tpl.replace(/\{(id|opt|by|item|goal)\}/g, (_, k) => String(k === 'opt' ? r.decided.opt : k === 'by' ? r.decided.by : r[k] == null ? '' : r[k]));
+      try { (deps.exec || require('child_process').execSync)(cmd, { stdio: 'ignore', timeout: 15000 }); say(`onDecision ran`); }
+      catch (e) { say(`onDecision failed: ${String(e.message || e).split('\n')[0].slice(0, 100)}`); }
+    }
+    return 0;
   }
   if (verb === 'tick') {
     for (const r of store.rulings.filter(x => !x.decided && x.deadline)) {

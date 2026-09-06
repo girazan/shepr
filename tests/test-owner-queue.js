@@ -35,6 +35,16 @@ check('decide twice is a no-op', run(['decide', 'R2', 'a']) === 0 && /already de
 check('decide unknown option -> usage', run(['decide', 'R3', 'z']) === 64);
 check('list shows only R3 open', run(['list']) === 0 && /^R3 #79 \(no feature\) never/.test(out) && !/R1|R2/.test(out));
 check('store persisted', JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'owner-queue.json'), 'utf8')).rulings.length === 3);
+{
+  const ran = [];
+  const cfg2 = { rulings: { ...cfg.rulings, onDecision: 'wake "{id}" "{opt}" "{by}" "#{item}" "{goal}"' } };
+  const rc = main(['decide', 'R3', 'a', '--by', 'telegram'], { root: ROOT, cfg: cfg2, board, now: T0, stdout: s => { out += s + '\n'; }, exec: c => ran.push(c) });
+  check('onDecision template runs with id/opt/by/item/goal substituted', rc === 0 && ran[0] === 'wake "R3" "a" "telegram" "#79" "G142"' && /onDecision ran/.test(out));
+  out = '';
+  main(['park', '--item', '77', '--q', 'q4', '--opt', 'a=x'], { root: ROOT, cfg: cfg2, board, now: T0, stdout: () => {} });
+  main(['decide', 'R4', 'a'], { root: ROOT, cfg: cfg2, board, now: T0, stdout: s => { out += s + '\n'; }, exec: () => { throw new Error('boom'); } });
+  check('onDecision failure is reported, decision still recorded', /onDecision failed: boom/.test(out) && JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'owner-queue.json'), 'utf8')).rulings.find(r => r.id === 'R4').decided.opt === 'a');
+}
 
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);

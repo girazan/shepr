@@ -85,6 +85,9 @@ Fresh pane per step: `impl-G<k>-S<j>` never outlives its step.
 
 Inconclusive rounds count for nothing; `R` still advances.
 
+A hand-back containing `NEEDS RULING:` is not a fail round: the
+coordinator turns it into ONE queue entry — `node "<plugin>/scripts/owner-queue.js" park --item <issue#> --q "…" --opt a="…" --opt b="…" --rec <letter> --evidence <pointer>` — with its own recommendation, and moves to the next runnable step. The item's Feature decides whether the entry auto-resolves (`rulings.autoResolveHours`) or waits for the operator; the assistant carries it to the phone. `attention` stays for halts (LIVENESS, kill, stall), never for questions with options. At the start of every tick run `owner-queue.js tick`; an `AUTO` line is a ruling to act on, a `WARN` line goes into the tick report.
+
 ## 5. Verdict
 
 `<c> verdict --goal G<k> --step S<j> --item <issue#>` reads the highest-round manifest and prints the verb:

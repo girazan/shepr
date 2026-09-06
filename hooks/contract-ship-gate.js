@@ -8,6 +8,7 @@
 // oversized payload. Inactive (no contract key, or valid empty domains)
 // is the only silent pass-through. Every other exit writes an audit line.
 'use strict';
+const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { readStdin, loadConfig, loadLock, appendAudit, AUDIT_REL, resolveRepoKey } = require('./lib/config');
@@ -173,6 +174,23 @@ function worktreeOk(segs, cwdArg) {
   });
 }
 
+function laneRebaseOk(cwdArg, cfgArg) {
+  try {
+    const roots = (cfgArg.workflow && Array.isArray(cfgArg.workflow.worktreeRoots) ? cfgArg.workflow.worktreeRoots : [])
+      .filter(r => typeof r === 'string' && r && !path.isAbsolute(r) && !r.split(/[\\/]/).includes('..'));
+    if (!roots.length) return false;
+    const common = resolveRepoKey(cwdArg);                // <main>/.git
+    const mainTop = fs.realpathSync.native(path.dirname(common));
+    const here = fs.realpathSync.native(git(cwdArg, ['rev-parse', '--show-toplevel']).trim());
+    const fold = p => (process.platform === 'win32' ? p.toLowerCase() : p);
+    if (!roots.some(r => fold(here).startsWith(fold(path.join(mainTop, r) + path.sep)))) return false;
+    const branch = git(cwdArg, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    let def = 'main';
+    try { def = git(cwdArg, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim().replace(/^origin\//, ''); } catch {}
+    return !!branch && branch !== 'HEAD' && branch !== def && branch !== 'main' && branch !== 'master';
+  } catch { return false; }
+}
+
 function git(cwdArg, args) {
   // stdio pipes everywhere: a blocked command must print exactly ONE
   // message (ours) — a git subprocess's own stderr is captured, never
@@ -308,6 +326,15 @@ if (cls.denied) {
   // ruling 2026-09-03). Every other denied verb stays hard-blocked.
   if (/^git (merge|pull|rebase)$/.test(cls.denied) && /#\s*OWNER-APPROVED\b/i.test(cmd)) {
     appendAudit(root, { action: cls.denied, verdict: 'ALLOW', by: 'owner-marker' });
+    process.exit(0);
+  }
+  // v0.9.3 `workflow.laneRebase: true` (owner-confirmed 2026-09-06): a lane may
+  // rebase ITS OWN branch inside a worktree under `workflow.worktreeRoots` —
+  // the cwd (never a -C/cd retarget, refused above) must sit under a granted
+  // root of the main checkout and HEAD must not be the default branch. Main,
+  // the default branch, and any checkout outside the roots stay operator-only.
+  if (cls.denied === 'git rebase' && cfg.workflow && cfg.workflow.laneRebase === true && laneRebaseOk(cwd, cfg)) {
+    appendAudit(root, { action: 'git rebase', verdict: 'ALLOW', by: 'lane-rebase', target: root });
     process.exit(0);
   }
   die(`${cls.denied} is not on the contract's git surface (read/local commands, commit, push). The operator runs it (for merge/pull/rebase: \`! git ... # OWNER-APPROVED\` typed by the operator — never appended by an agent), or an ADR grants a workflow that needs it.`);

@@ -50,6 +50,7 @@ queue.main(['park', '--item', '8', '--q', 'vent?', '--opt', 'a=live', '--opt', '
   check('poll --once: button from the owner chat decides R1 (a) by telegram', rc === 0 && store.rulings[0].decided && store.rulings[0].decided.opt === 'a' && store.rulings[0].decided.by === 'telegram' && /DECIDED R1 \(a\)/.test(out));
   check('button from another chat is dropped, R2 untouched', !store.rulings[1].decided && /DROP callback from chat 99/.test(out));
   check('buttons removed after a decision (editMessageReplyMarkup)', calls.some(c => c.method === 'editMessageReplyMarkup' && c.body.message_id === 101));
+  check('visible receipt replied under the card', calls.some(c => c.method === 'sendMessage' && c.body.reply_to_message_id === 101 && /^✅ <b>R1 → \(a\)<\/b> recorded/.test(c.body.text)));
   check('answerCallbackQuery sent for the accepted press', calls.some(c => c.method === 'answerCallbackQuery' && c.body.callback_query_id === 'c1' && /R1/.test(c.body.text)));
   const inbox = fs.readFileSync(path.join(ROOT, '.orch', 'assistant-inbox.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
   check('allowlisted text relayed to the inbox; free text and foreign chat ignored', inbox.length === 1 && inbox[0].text === 'focus G142' && /IGNORED text/.test(out) && /DROP message from chat 7/.test(out));

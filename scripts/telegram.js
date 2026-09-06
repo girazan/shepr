@@ -89,7 +89,17 @@ async function main(argv, deps = {}) {
     const queue = deps.queue || require('./owner-queue');
     let rounds = 0;
     do {
-      const updates = await api(secrets, 'getUpdates', { offset, timeout: once ? 0 : 25, allowed_updates: ['callback_query', 'message'] }, fetchFn);
+      let updates;
+      try {
+        updates = await api(secrets, 'getUpdates', { offset, timeout: once ? 0 : 25, allowed_updates: ['callback_query', 'message'] }, fetchFn);
+      } catch (e) {
+        // A persistent poller must survive a network blip: log, back off 15 s, try again. --once reports the failure.
+        say(`POLL-ERROR ${String(e.message || e).slice(0, 120)}`);
+        if (once) return 1;
+        await new Promise(r => setTimeout(r, 15000));
+        rounds++;
+        continue;
+      }
       for (const u of updates) {
         offset = u.update_id + 1;
         const cq = u.callback_query;
@@ -99,8 +109,15 @@ async function main(argv, deps = {}) {
           const m = /^(R\d+):([a-z])$/.exec(cq.data || '');
           if (!m) { await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id }, fetchFn).catch(() => {}); continue; }
           let out = ''; const rc = queue.main(['decide', m[1], m[2], '--by', 'telegram'], { root, stdout: s => { out += s; } });
-          await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id, text: rc === 0 ? `${m[1]} → (${m[2]})` : 'not accepted' }, fetchFn).catch(() => {});
-          if (rc === 0) await api(secrets, 'editMessageReplyMarkup', { chat_id: secrets.chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }, fetchFn).catch(() => {});
+          const fresh = rc === 0 && !/already decided/.test(out);
+          await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id, text: fresh ? `${m[1]} → (${m[2]})` : 'already decided' }, fetchFn).catch(() => {});
+          if (fresh) {
+            await api(secrets, 'editMessageReplyMarkup', { chat_id: secrets.chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }, fetchFn).catch(() => {});
+            // A visible receipt under the card — the toast disappears in seconds.
+            const woke = /onDecision ran/.test(out) ? ' · coordinator woken' : '';
+            await api(secrets, 'sendMessage', { chat_id: secrets.chatId, reply_to_message_id: cq.message.message_id, parse_mode: 'HTML',
+              text: `✅ <b>${m[1]} → (${m[2]})</b> recorded ${new Date().toISOString().slice(11, 16)} UTC${woke}` }, fetchFn).catch(() => {});
+          }
           say(`${rc === 0 ? 'DECIDED' : 'REJECTED'} ${m[1]} (${m[2]}) via telegram — ${out.trim()}`);
           continue;
         }
