@@ -4,12 +4,12 @@ description: >
   Create or edit a goal: shape the goal into a one-page BRIEF (goal,
   metric, done-condition, contract domains touched, kill criteria) using
   the routed shaping tool, and register the goal on the board.
-  Do NOT use for running work on an existing goal (/orch:go), for
-  contract or domain edits (/orch:setup), or for viewing progress
-  (/orch:board).
+  Do NOT use for running work on an existing goal (/shepr:go), for
+  contract or domain edits (/shepr:setup), or for viewing progress
+  (/shepr:board).
 ---
 
-# /orch:goal — define a goal
+# /shepr:goal — define a goal
 
 Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
 
@@ -61,7 +61,7 @@ Native fallback — exactly three questions, one at a time:
    Rename the worklog to `tmp/worklogs/G<n>-<name>.md`; the
    goal is `G<n> · <name>` everywhere from here on. Prefer a short
    code-like name (2-6 chars). Create `tmp/worklogs/` and `docs/adr/`
-   now if missing. No `.orch/board.json` → stop, point to `/orch:board init`.
+   now if missing. No `.orch/board.json` → stop, point to `/shepr:board init`.
 3. Seed the route — one call per known BRIEF step:
    `add-item G<n> "<step>" [--bucket Now|Next|Later] [--pipeline <option>] [--feature <domain>] [--outcome "<next>"] [--gate "<LABEL>"] [--accept "<criterion>"] [--recipe <name>]`
    Always create at least one step — a small goal's single step is its `gate:` item, and its `--recipe` comes from the shaping table (`fast` for clear+small, `debug` for a bug).
@@ -74,7 +74,7 @@ Native fallback — exactly three questions, one at a time:
    `Priority` options — never invent one.
 4. Classify the `domains:` line against the contract now — if any part is
    `decide: human`, tell the operator where they will be needed. Then hand
-   to `/orch:go` (phase: route).
+   to `/shepr:go` (phase: route).
 
 Complete when: the BRIEF is the goal issue's body and sits at the top of
 the worklog, and the goal's items are on the board.

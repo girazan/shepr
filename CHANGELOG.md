@@ -1,48 +1,52 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-09-06
+
+### Renamed
+- Plugin `orch` → **shepr** (the shepherd of the herd: herdr moves the agents, shepr decides and verifies). Commands are `/shepr:setup|milestone|goal|go|board`; `scripts/orch-review.js` → `scripts/shepr-review.js`. Data names are unchanged in this release: `.claude/orch.json`, `~/.claude/orch-lock.json`, `.orch/board.json`, `.claude/orch-audit.jsonl`, labels `orch:*`, `<git-common-dir>/orch/` — they migrate in a later major version.
+
 
 ### Added
 - `scripts/board-gh.js` — GitHub Issues + Projects v2 are the board (spec §4 r8d). Milestone (`M<n> · <objective>`, `n` = GitHub number; legacy `C<n>` sorts) → goal = `orch:goal` issue `G<n>` → items = sub-issues; buckets = the Project's `Priority` options (`Now/Next/Later` after the operator renames them). Verbs: init [--project N] [--owner <login>] [--dry-run], milestones, add-milestone, close-milestone, sync-features, add-goal, add-item, move, set-status, set-blocker, clear-blocker, done, close-goal, read. Lock + fsynced journal; idempotent resume.
 - `.orch/board.json` per repo; `board.github` lock key.
 - ship-gate: `close-goal G<n>` requires a ledger line naming `G<n>` in `tmp/worklogs/G<n>-*.md` at HEAD.
 - `board-html.js --json`.
-- `/orch:milestone` — Director-only fifth command: `define` · `split` · `prioritize` · `close`. board-gh verbs `add-milestone`, `close-milestone` (journaled, refused when `ORCH_ROLE` is set) and `move` on goals.
+- `/shepr:milestone` — Director-only fifth command: `define` · `split` · `prioritize` · `close`. board-gh verbs `add-milestone`, `close-milestone` (journaled, refused when `ORCH_ROLE` is set) and `move` on goals.
 - Milestone grammar `M<n> · <objective>` with `n` = the GitHub milestone number (legacy `C<n>` still ranks); description `target: <date> · done: <observable>`; `close-milestone --summary` appends `closed: · summary:` and refuses when the read window cannot prove completeness.
 - BRIEF `feature:` line, read by `add-goal`; items inherit the goal's Feature unless `--feature` is given.
 - Item body lines `step:` (assigned, never renumbered), `accept:` and `recipe:` (execution recipes only: `tdd|iterate|debug|cleanup|fast`); `add-item --accept/--recipe`.
 - ROUTE line fields `base:<sha>` and `review:<single|dual>`.
-- `init` seeds Feature from contract domain names (non-adopt only); journaled `sync-features` keeps it mirrored; `/orch:setup` runs it after a domain edit.
+- `init` seeds Feature from contract domain names (non-adopt only); journaled `sync-features` keeps it mirrored; `/shepr:setup` runs it after a domain edit.
 - Replay skips Director-only pending actions inside a roled pane.
 - Bare value-taking options (`--brief`, `--bucket`, `--recipe`, …) are refused.
 - Recipes: `skills/go/recipes/{spec,research,tdd,debug,iterate,cleanup,fast}.md` — one page each with stages and "Gate rubric adds" (spec §8); `review-goal.md` is the base gate rubric. These are the rubric files the review manifest hashes.
-- Skill routing (spec §9, d.32): `workflow.tools` maps a stage key to one chosen skill `name@version` or `null`; `scripts/tools.js list|check|pin` resolves against `~/.claude/skills`, `~/.agents/skills` and installed plugins, reports `ok|missing|mismatch|native` with the invoke mode (`skill` vs `read` for `disable-model-invocation` skills), and refuses to pin `to-spec`/`to-tickets`/`wayfinder` unless `docs/agents/issue-tracker.md` is the local-markdown tracker. `/orch:setup` fills and pins the map (`find-skills` offered when installed, native first); `/orch:go` invokes the step's recipe and resolved skill and writes `skill: <stage>=<name>` to the ledger; `/orch:board` lists stages whose pin no longer matches.
+- Skill routing (spec §9, d.32): `workflow.tools` maps a stage key to one chosen skill `name@version` or `null`; `scripts/tools.js list|check|pin` resolves against `~/.claude/skills`, `~/.agents/skills` and installed plugins, reports `ok|missing|mismatch|native` with the invoke mode (`skill` vs `read` for `disable-model-invocation` skills), and refuses to pin `to-spec`/`to-tickets`/`wayfinder` unless `docs/agents/issue-tracker.md` is the local-markdown tracker. `/shepr:setup` fills and pins the map (`find-skills` offered when installed, native first); `/shepr:go` invokes the step's recipe and resolved skill and writes `skill: <stage>=<name>` to the ledger; `/shepr:board` lists stages whose pin no longer matches.
 
 - Role guardrails (spec §6, all ADVISORY, keyed on `ORCH_ROLE`): `hooks/role-guardrails.js` (PreToolUse Edit|Write|Read) — reviewer edits only `docs/reviews/`; only a reviewer writes there; coordinator reads only `tmp/handoffs/`, `docs/reviews/`, `.claude/orch.json`, the focus goal's worklog; architect writes no contract-domain path (`docs/adr/`, worklog allowed); dev never touches the worklog's BRIEF block. Every refusal audits `label: "ADVISORY"` and `contract: locked|unlocked`.
 - Session marker `<git-common-dir>/orch/session-<sessionId>.json` `{role, milestone, goal, step, startedAt}`: `hooks/session-start.js` (from `ORCH_ROLE`/`ORCH_IDS`, exports `ORCH_SESSION_ID`), `hooks/lib/session.js`, `scripts/session-marker.js set|show`.
 - `hooks/stop-handoff.js` (Stop): a roled pane with edits since `startedAt` and no newer handoff at `tmp/handoffs/M<n>.G<k>.S<j>-dev.md` / `M<n>.G<k>-architect.md` / `M<n>-coordinator.md` is refused once, file named. Size budgets (handoff ≤40 lines, plan section ≤300 lines / ≤7 steps) as one advisory line.
 - ship-gate: `ORCH_ROLE=reviewer` → commit/push refused (ADVISORY, with or without a contract).
 - `tmp/handoffs/` gitignored. `hooks/lib/transcript.js` (`countEdits`, shared with `session-hygiene`); `globToRe` moved to `hooks/lib/contract.js`.
-- `scripts/orch-review.js` — the gate: `orch review G<k> --step S<j> | --plan`. Refuses a dirty tree under the goal's paths and dual review without `models.review-alt`; range from the frozen BRIEF (`base:`/`domains:` at the ROUTE commit) chained from the latest passing round; tests on a detached worktree under `<git-common-dir>/orch/wt/<id>/`; reviewer slot(s) spawned with `ORCH_ROLE=reviewer` in the child env; slot files, round manifest and content-addressed rubric copies (`docs/reviews/rubrics/<name>.<sha256>.md`) committed `-- docs/reviews` only; item set `In review`; roster entry while it runs.
+- `scripts/shepr-review.js` — the gate: `shepr review G<k> --step S<j> | --plan`. Refuses a dirty tree under the goal's paths and dual review without `models.review-alt`; range from the frozen BRIEF (`base:`/`domains:` at the ROUTE commit) chained from the latest passing round; tests on a detached worktree under `<git-common-dir>/orch/wt/<id>/`; reviewer slot(s) spawned with `ORCH_ROLE=reviewer` in the child env; slot files, round manifest and content-addressed rubric copies (`docs/reviews/rubrics/<name>.<sha256>.md`) committed `-- docs/reviews` only; item set `In review`; roster entry while it runs.
 - `hooks/lib/evidence-lint.js` — spec §5 lint (FROZEN / CHAIN / TARGET / legs a–f / CLOSE TAIL), git + lock only; runs in the ship gate at `board-gh done --goal --step` and `close-goal` — ENFORCED* with a lock entry, ADVISORY (audit line) without.
 - ship-gate: built-in `commit` grant for `docs/reviews/**`, `tmp/worklogs/**`, `docs/adr/**` (a domain may lift it to `push`); `git worktree add --detach` / `remove` allowed under `<git-common-dir>/orch/wt/` only.
-- `board-gh done --goal G<n> --step S<j> <item#>`; `add-goal` validates `domains:` against the contract; `read` marks merged goals `unverified` (+ `unverifiedReason`) when no passing round covers their final range; `/orch:board` shows it.
+- `board-gh done --goal G<n> --step S<j> <item#>`; `add-goal` validates `domains:` against the contract; `read` marks merged goals `unverified` (+ `unverifiedReason`) when no passing round covers their final range; `/shepr:board` shows it.
 - `scripts/coordinator.js` — the Coordinator tick as code: goal pick rules 0–5 (no two running goals own a common file — `git ls-files` ∩ every listed domain's paths), `kill:` check, fleet ceiling, pulse line `{by:"pulse"}`; five-line dispatch proposal (`confirm` via AskUserQuestion — Go / Edit brief / Skip / Stop — or `auto` to the audit log); pane launch (roster entry, and under `herdr` a pane split with `ORCH_ROLE`/`ORCH_IDS` env, `agent start --kind --pane`, `agent prompt`); fix rounds (resident on fails 1–2, fresh one tier up on 3, no-progress N=2 → stall); verdict → `done --goal --step` / hand-back / `attention`; PR text per goal; milestone summary; `fleet` data for the board.
-- `skills/go/coordinator.md` — the tick, the vehicles `native | loop | herdr` (`/loop <interval> /orch:go`), goal branch `goal/G<k>-<name>` at the ROUTE `base:` on first pick, one PR per goal (`G<k> · <name>`), `close-goal` after the Director merges, `tmp/handoffs/M<n>-coordinator.md` for `/orch:milestone close`.
-- `/orch:board` FLEET footer: delegates with ghosts, pulse age/stale, out-of-scope commits (spec §5 residual).
-- `workflow.coordinator`, `workflow.dispatch`, `fleet.capacity`, `fleet.staleMinutes`, `fleet.pulseStaleMinutes` asked by `/orch:setup`.
+- `skills/go/coordinator.md` — the tick, the vehicles `native | loop | herdr` (`/loop <interval> /shepr:go`), goal branch `goal/G<k>-<name>` at the ROUTE `base:` on first pick, one PR per goal (`G<k> · <name>`), `close-goal` after the Director merges, `tmp/handoffs/M<n>-coordinator.md` for `/shepr:milestone close`.
+- `/shepr:board` FLEET footer: delegates with ghosts, pulse age/stale, out-of-scope commits (spec §5 residual).
+- `workflow.coordinator`, `workflow.dispatch`, `fleet.capacity`, `fleet.staleMinutes`, `fleet.pulseStaleMinutes` asked by `/shepr:setup`.
 
 ### Changed
 - `delegate.md`: a step brief's MUST DO opens with the recipe's stages; CONTEXT names only the goal's worklog and listed ADRs.
 - Vocabulary: "milestone" is GitHub's Milestone; "goal" is one ongoing piece of work (`G<n>` orch:goal issue); the done-condition item marker is `gate: <LABEL>` (was `milestone:`). Lane id is `G<issue#>`.
-- Goals sort Priority-first across milestones, then milestone, then issue; read goals carry `bucket` and `feature`. `/orch:go` picks the focus goal by that order (recency rule retired).
+- Goals sort Priority-first across milestones, then milestone, then issue; read goals carry `bucket` and `feature`. `/shepr:go` picks the focus goal by that order (recency rule retired).
 - `init` no longer seeds Pipeline from contract domains (absent → `general`).
-- The goal skill's shaping table and setup's `workflow.tools` defaults no longer name superpowers; orch routes only through `workflow.tools` stages and its own native fallbacks.
+- The goal skill's shaping table and setup's `workflow.tools` defaults no longer name superpowers; shepr routes only through `workflow.tools` stages and its own native fallbacks.
 - ship-gate: the push-base `ls-remote` fallback is gone — with no upstream and no local `origin/HEAD` the push is refused naming `git remote set-head origin -a` (a gate never talks to the remote).
 - Bare `board-gh done <item#>` is refused (script and hook).
 
 ### Removed
-- `docs/BOARD.md` as a board store. `/orch:setup` deletes it; nothing is imported.
+- `docs/BOARD.md` as a board store. `/shepr:setup` deletes it; nothing is imported.
 
 ## 0.7.0 — 2026-08-31
 
@@ -64,7 +68,7 @@
 
 ## 0.6.0 — 2026-08-29
 - Numbered lanes: goals get stable `G<n>` identity through goal/go/delegate.
-- `/orch:board` — read-only route-map command (buckets × lanes, YOU track, gates, queue).
+- `/shepr:board` — read-only route-map command (buckets × lanes, YOU track, gates, queue).
 - `scripts/board-html.js` — self-contained HTML board export from ROUTE grammar.
 
 ## 0.5.0 — 2026-08-29
@@ -75,7 +79,7 @@
 
 ## 0.3.x — 2026-08-28
 - The decision contract: `.claude/orch.json` domains, deny-by-default `contract-ship-gate`,
-  lock mirroring, `/orch:setup`, `/orch:goal`, `/orch:go` driver, research route,
+  lock mirroring, `/shepr:setup`, `/shepr:goal`, `/shepr:go` driver, research route,
   dual-reviewer convergence, ledger lines, audit trail.
 
 ## 0.2.0 — 2026-08-28

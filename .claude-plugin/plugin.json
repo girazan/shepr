@@ -1,11 +1,11 @@
 {
-  "name": "orch",
-  "version": "0.7.0",
-  "description": "The decision contract for AI-driven work: the human decides once which domains are theirs; frontier AI orchestrates, plans, reviews, and gates; cheap AI executes; shipping is enforced per contract by deterministic hooks; every decision leaves a record (audit trail, Rulings, ADRs).",
+  "name": "shepr",
+  "version": "0.8.0",
+  "description": "shepr \u2014 the shepherd for agent work: the human decides once, in a contract; agents plan, build and review; every 'done' is recomputed from git before it counts. Contract-gated shipping, review manifests a hook verifies, your favourite skills at every stage \u2014 none of them trusted with the gate.",
   "author": {
     "name": "girazan"
   },
-  "homepage": "https://github.com/girazan/orch",
-  "repository": "https://github.com/girazan/orch",
+  "homepage": "https://github.com/girazan/shepr",
+  "repository": "https://github.com/girazan/shepr",
   "license": "MIT"
 }

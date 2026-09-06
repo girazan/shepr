@@ -87,7 +87,7 @@ function loadConfig(j) {
   // Guard toggles (destructiveGit, etc.) merge from the lock's top level,
   // unscoped. contract/models are repo-specific governance data and are
   // read ONLY from repos[<repoKey>] below — a legacy top-level contract/
-  // models is inert until /orch:setup migrates it (scripts/migrate-lock.js,
+  // models is inert until /shepr:setup migrates it (scripts/migrate-lock.js,
   // spec §1 "Legacy migration").
   const lockGuards = {};
   for (const k of Object.keys(lockVal)) {

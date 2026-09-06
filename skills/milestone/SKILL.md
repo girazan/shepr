@@ -3,11 +3,11 @@ name: milestone
 description: >
   Define, split, prioritize, or close a milestone — the long-horizon
   objective that goals hang under. Director-only: refuses inside any
-  pane that carries ORCH_ROLE. Do NOT use to shape a goal (/orch:goal),
-  drive work (/orch:go), or edit the contract (/orch:setup).
+  pane that carries ORCH_ROLE. Do NOT use to shape a goal (/shepr:goal),
+  drive work (/shepr:go), or edit the contract (/shepr:setup).
 ---
 
-# /orch:milestone — scope lives here
+# /shepr:milestone — scope lives here
 
 Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
 If `ORCH_ROLE` is set in this session's environment, stop: milestones
@@ -39,7 +39,7 @@ It prints `M<n>` — `n` is the GitHub milestone number and the title becomes `M
 Read the milestone and the Project's Feature options (they are the
 contract's domain names). Propose ordered candidate goals — one line
 each, a rough size (small / big), the Feature each belongs to. Create
-NOTHING. For each goal the Director accepts, hand to `/orch:goal`.
+NOTHING. For each goal the Director accepts, hand to `/shepr:goal`.
 
 ## prioritize
 

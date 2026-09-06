@@ -115,7 +115,7 @@ Pane names: `impl-G<k>-S<j>` (Dev, fresh per step), `arch-G<k>`
 (Architect), `coord` (Coordinator). Roster entry in
 `<git-common-dir>/orch/fleet.json` (v2 §3.1 shape plus the two role
 fields), written by the launcher at start and removed at teardown —
-INSTRUCTED until the v0.9 roster hooks ship; `orch review` writes and
+INSTRUCTED until the v0.9 roster hooks ship; `shepr review` writes and
 removes its own reviewer entry:
 
     { "name": "impl-G142-S2", "lane": "G142", "role": "mid", "orchRole": "dev", "ids": "M53.G142.S2", "vehicle": "herdr", "status": "running", "ownerSessionId": "<id>", "agentId": "<pane id>", "brief": "tmp/worklogs/G142-HDS.md#brief-1", "createdAt": "<iso>", "lastSeen": "<iso>" }

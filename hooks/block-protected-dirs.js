@@ -11,7 +11,7 @@ const { readStdin, loadConfig } = require('./lib/config');
 
 const { j, oversized } = readStdin();
 if (oversized) {
-  console.error('BLOCKED (orch): oversized hook payload — target path unverifiable, refusing.');
+  console.error('BLOCKED (shepr): oversized hook payload — target path unverifiable, refusing.');
   process.exit(2);
 }
 if (!j) process.exit(0);
@@ -23,7 +23,7 @@ for (const d of dirs) {
   const esc = String(d).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   if (new RegExp('(^|[\\\\/])' + esc + '[\\\\/]', 'i').test(f)) {
     console.error(
-      `BLOCKED: "${d}" is a protected directory (orch config). A target that looks ` +
+      `BLOCKED: "${d}" is a protected directory (shepr config). A target that looks ` +
       `wrong gets REPORTED to the operator with a cited source — never edited.`
     );
     process.exit(2);

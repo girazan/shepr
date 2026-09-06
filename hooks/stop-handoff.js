@@ -57,7 +57,7 @@ let mtime = 0;
 try { mtime = fs.statSync(path.join(root, handoff)).mtimeMs; } catch { mtime = 0; }
 if (mtime > started) {
   const over = budgets(root, marker, handoff);
-  if (over.length) console.error(`SIZE BUDGET (orch, ADVISORY): ${over.join(' · ')}.`);
+  if (over.length) console.error(`SIZE BUDGET (shepr, ADVISORY): ${over.join(' · ')}.`);
   process.exit(0);
 }
 if (j.stop_hook_active) process.exit(0); // refused once already — let it end
@@ -66,7 +66,7 @@ if (edits < 1) process.exit(0);
 appendAudit(root, { action: 'stop-handoff', role: marker.role, file: handoff, verdict: 'BLOCK', label: 'ADVISORY',
   reason: `${edits} edit(s) since ${marker.startedAt}, no handoff newer than that`, by: 'hook' });
 console.error(
-  `HANDOFF (orch, ADVISORY): ${edits} edit(s) this session as ${marker.role} and no handoff newer than ${marker.startedAt}. ` +
+  `HANDOFF (shepr, ADVISORY): ${edits} edit(s) this session as ${marker.role} and no handoff newer than ${marker.startedAt}. ` +
   `Write ${handoff} (≤40 lines: what changed · what is blocked · what was decided · the next role's first action), then stop again.`
 );
 process.exit(2);

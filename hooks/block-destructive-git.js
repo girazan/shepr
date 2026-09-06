@@ -14,7 +14,7 @@ const { readStdin, loadConfig, tmpMark } = require('./lib/config');
 
 const { j, oversized } = readStdin();
 if (oversized) {
-  console.error('BLOCKED (orch): oversized hook payload — command unverifiable, refusing.');
+  console.error('BLOCKED (shepr): oversized hook payload — command unverifiable, refusing.');
   process.exit(2);
 }
 if (!j) process.exit(0);
@@ -25,7 +25,7 @@ const full = loadConfig(j);
 if (full.__lockCorrupt) {
   // The operator locked guards and the lock is unreadable: their authority
   // is unrecoverable, so fail CLOSED rather than run ungated (spec §1).
-  console.error('BLOCKED (orch): ~/.claude/orch-lock.json is corrupt — locked guard authority unrecoverable. Fix the lock file.');
+  console.error('BLOCKED (shepr): ~/.claude/orch-lock.json is corrupt — locked guard authority unrecoverable. Fix the lock file.');
   process.exit(2);
 }
 const cfg = full.destructiveGit || {};
@@ -56,11 +56,11 @@ for (const [re, name] of rules) {
     try { fs.writeFileSync(counterFile, String(n)); } catch {}
     if (n <= 3) {
       console.error(
-        `BLOCKED by orch guard: ${name}. Not yours to run. ` +
+        `BLOCKED by shepr guard: ${name}. Not yours to run. ` +
         `If the operator truly wants this, they run it themselves.`
       );
     } else {
-      console.error(`BLOCKED (orch, denial #${n} this session): ${name} — operator runs it themselves if intended.`);
+      console.error(`BLOCKED (shepr, denial #${n} this session): ${name} — operator runs it themselves if intended.`);
     }
     process.exit(2);
   }

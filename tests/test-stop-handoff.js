@@ -62,7 +62,7 @@ check('unreadable transcript -> 0', run('dev-notx', { transcript_path: path.join
 // --- the rule -------------------------------------------------------------------------
 mark('dev1', { role: 'dev', milestone: 'M53', goal: 'G142', step: 'S2' });
 { const r = run('dev1');
-  check('dev, 2 edits, no handoff -> 2, names the file', r.code === 2 && /^HANDOFF \(orch, ADVISORY\)/m.test(r.err) && r.err.includes('tmp/handoffs/M53.G142.S2-dev.md'));
+  check('dev, 2 edits, no handoff -> 2, names the file', r.code === 2 && /^HANDOFF \(shepr, ADVISORY\)/m.test(r.err) && r.err.includes('tmp/handoffs/M53.G142.S2-dev.md'));
   const a = audit()[audit().length - 1];
   check('audit line: stop-handoff, dev, label ADVISORY, file named', a.action === 'stop-handoff' && a.role === 'dev' && a.label === 'ADVISORY' && a.file === 'tmp/handoffs/M53.G142.S2-dev.md' && a.verdict === 'BLOCK'); }
 check('stop_hook_active -> 0 (refuse once)', run('dev1', { stop_hook_active: true }).code === 0);
@@ -85,7 +85,7 @@ check('architect with handoff -> 0', run('arch1').code === 0);
 // --- size budgets (advisory, exit 0) ----------------------------------------------------
 put('tmp/handoffs/M53.G142-architect.md', Array.from({ length: 41 }, (_, i) => `line ${i}`).join('\n'));
 { const r = run('arch1');
-  check('handoff over 40 lines -> 0 with a SIZE BUDGET line', r.code === 0 && /^SIZE BUDGET \(orch, ADVISORY\)/m.test(r.err) && /41 lines/.test(r.err)); }
+  check('handoff over 40 lines -> 0 with a SIZE BUDGET line', r.code === 0 && /^SIZE BUDGET \(shepr, ADVISORY\)/m.test(r.err) && /41 lines/.test(r.err)); }
 put('tmp/handoffs/M53.G142-architect.md', 'short\n');
 put('tmp/worklogs/G142-hds.md', 'BRIEF\ngoal: x\n\n## Plan\n' + Array.from({ length: 8 }, (_, i) => `- S${i + 1} step ${i + 1}`).join('\n') + '\n\n## Ledger\n');
 { const r = run('arch1');

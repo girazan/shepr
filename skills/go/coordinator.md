@@ -9,7 +9,7 @@ from the repo root; `<c>` = `node "<plugin>/scripts/coordinator.js"`,
 
 Vehicles (`workflow.coordinator`): `native` is today's session (no tick;
 the driver's phases apply). `loop` runs one tick per invocation of
-`/loop <interval> /orch:go` — a `confirm` question blocks the tick, which
+`/loop <interval> /shepr:go` — a `confirm` question blocks the tick, which
 is the intended escalation. `herdr` runs the same tick and launches panes
 with `herdr pane split --cwd <repo> --env ORCH_ROLE=… --env ORCH_IDS=…`
 then `herdr agent start <pane-name> --kind claude --pane <pane-id>` and
@@ -36,10 +36,10 @@ this tick's one action; `skipped[]` names every goal passed over and why
 | `route` | §2 below (first pick: branch + ROUTE line), then stop — the next tick dispatches |
 | `dispatch` | §3 below |
 | `wait-capacity` | report `fleet <count>/<capacity>`; stop |
-| `await-dev` | `herdr agent wait impl-G<k>-S<j> --until done|blocked` (herdr) or read the newest `tmp/handoffs/M<n>.G<k>.S<j>-dev.md` (loop); a `blocked` pane → attach the Director; a handoff means Dev ran `orch review` → next tick sees `review` |
+| `await-dev` | `herdr agent wait impl-G<k>-S<j> --until done|blocked` (herdr) or read the newest `tmp/handoffs/M<n>.G<k>.S<j>-dev.md` (loop); a `blocked` pane → attach the Director; a handoff means Dev ran `shepr review` → next tick sees `review` |
 | `await-gate` | the reviewer is still running; stop |
 | `verdict` | §5 below |
-| `gate-rerun` | attention was cleared after an inconclusive → `node "<plugin>/scripts/orch-review.js" G<k> --step S<j>` (next round `R<r+1>`, no Dev dispatch); stop |
+| `gate-rerun` | attention was cleared after an inconclusive → `node "<plugin>/scripts/shepr-review.js" G<k> --step S<j>` (next round `R<r+1>`, no Dev dispatch); stop |
 | `merge-gate` | §6 below |
 
 A `kill:` line that is not `<n> sessions|ticks|rounds` is yours to judge:
@@ -53,7 +53,7 @@ Before any pane, Architect or Dev:
 2. Create the goal branch at it: `git switch -c goal/G<k>-<name> <base>` (`<name>` = the goal name slugged; `<c> pr-text` and the branch share the slug).
 3. Append the ROUTE line to `tmp/worklogs/G<k>-<name>.md` exactly as go/SKILL.md phase route states it (`base:` = that sha, `review:` from the contract, tier/decide/ship from the contract, `approved:auto` unless a domain is `decide: human` — then STOP and ask first).
 4. `git add tmp/worklogs/G<k>-<name>.md && git commit -m "route: G<k> · base <sha>"` — the evidence-path grant admits it; a block is the contract working.
-5. Fuzzy or big goal (no plan section, more than one open step wanted) → launch the Architect pane the same way as §3 with `--role architect`, name `arch-G<k>`, brief = the BRIEF + "write the plan section; `add-item` per step with `--accept` and `--recipe`; ≤5 questions; end with `orch review G<k> --plan`". Dispatch the first step only after a passing `P.R<r>`.
+5. Fuzzy or big goal (no plan section, more than one open step wanted) → launch the Architect pane the same way as §3 with `--role architect`, name `arch-G<k>`, brief = the BRIEF + "write the plan section; `add-item` per step with `--accept` and `--recipe`; ≤5 questions; end with `shepr review G<k> --plan`". Dispatch the first step only after a passing `P.R<r>`.
 
 Every pane of this goal works on this branch; steps are commits on it, never PRs of their own.
 
@@ -102,7 +102,7 @@ Inconclusive rounds count for nothing; `R` still advances.
 
 ## 7. Milestone (spec §7 step 8)
 
-When every goal under `M<n>` is merged: judge one line against the milestone's `done:` and run `<c> milestone-summary M<n> --line "<that line>"` → `tmp/handoffs/M<n>-coordinator.md`. Tell the Director to run `/orch:milestone close`; you never close it.
+When every goal under `M<n>` is merged: judge one line against the milestone's `done:` and run `<c> milestone-summary M<n> --line "<that line>"` → `tmp/handoffs/M<n>-coordinator.md`. Tell the Director to run `/shepr:milestone close`; you never close it.
 
 ## Every tick ends
 

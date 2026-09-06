@@ -53,7 +53,7 @@ function init({ opt, cwd, gh, stdout }) {
   if (opt.owner === true) { say('init: --owner requires a value'); return 1; }
   const { owner: repoOwner, repo } = remoteRepo(cwd);
   const owner = typeof opt.owner === 'string' ? opt.owner : repoOwner;
-  const title = `${repo} · orch board`;
+  const title = `${repo} · shepr board`;
 
   const o = gh.graphql(Q.owner, { o: owner }).repositoryOwner;
   let project;

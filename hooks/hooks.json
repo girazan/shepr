@@ -1,5 +1,5 @@
 {
-  "description": "orch guardrails — deterministic enforcement around agent tool use",
+  "description": "shepr guardrails \u2014 deterministic enforcement around agent tool use",
   "hooks": {
     "PreToolUse": [
       {

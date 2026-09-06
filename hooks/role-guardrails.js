@@ -40,7 +40,7 @@ const isWorklog = /^tmp\/worklogs\/[^/]+\.md$/.test(rel);
 function refuse(reason, cfg) {
   appendAudit(root, { action: 'role-guardrail', role, tool, file: rel, verdict: 'BLOCK', label: 'ADVISORY',
     contract: cfg ? (cfg.__repoLocked ? 'locked' : 'unlocked') : 'n/a', reason, by: 'hook' });
-  console.error(`BLOCKED (orch role-guardrail, ADVISORY): ${reason}`);
+  console.error(`BLOCKED (shepr role-guardrail, ADVISORY): ${reason}`);
   process.exit(2);
 }
 
@@ -60,7 +60,7 @@ try {
     refuse(`ORCH_ROLE=reviewer edits only docs/reviews/ — a reviewer never fixes what it finds; put the finding in the slot file (${rel}).`);
   }
   if (isWrite && role !== 'reviewer' && under('docs/reviews')) {
-    refuse(`only the gate reviewer writes docs/reviews/ (ORCH_ROLE=${role}); manifests come from \`orch review\`, never by hand (${rel}).`);
+    refuse(`only the gate reviewer writes docs/reviews/ (ORCH_ROLE=${role}); manifests come from \`shepr review\`, never by hand (${rel}).`);
   }
   if (!isWrite && role === 'coordinator') {
     const goal = (ensureMarker(j).marker || {}).goal || null;

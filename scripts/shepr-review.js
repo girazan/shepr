@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// orch review — the gate (spec §5). A script, not a skill: the brief is
-// code. `orch review G<k> --step S<j>` or `--plan`.
+// shepr review — the gate (spec §5). A script, not a skill: the brief is
+// code. `shepr review G<k> --step S<j>` or `--plan`.
 //   refuses: dirty tree under the goal's paths (frozen BRIEF, before any
 //   range), dual review without models.review-alt, no models.review;
 //   computes FROZEN / base / head / paths / slots / tier through the same
@@ -56,33 +56,33 @@ function main(argv, deps = {}) {
   const si = argv.indexOf('--step');
   const stepArg = si >= 0 ? argv[si + 1] : null;
   const plan = argv.includes('--plan');
-  if (!gm || (plan && si >= 0) || (!plan && !/^S\d+$/.test(stepArg || ''))) { say('usage: orch review G<k> --step S<j> | --plan'); return 1; }
+  if (!gm || (plan && si >= 0) || (!plan && !/^S\d+$/.test(stepArg || ''))) { say('usage: shepr review G<k> --step S<j> | --plan'); return 1; }
   const goalN = Number(gm[1]);
-  let root; try { root = git(cwd, ['rev-parse', '--show-toplevel']).trim(); } catch { say('orch review: not inside a git repository'); return 1; }
+  let root; try { root = git(cwd, ['rev-parse', '--show-toplevel']).trim(); } catch { say('shepr review: not inside a git repository'); return 1; }
   const g = args => git(root, args);
   const commonDir = deps.commonDir || require('../hooks/lib/config').resolveRepoKey(root);
   const cfg = deps.cfg || require('../hooks/lib/config').loadConfig({ cwd: root });
   const contract = cfg.contract, models = cfg.models || {};
-  if (!contract || !contract.domains || !Object.keys(contract.domains).length) { say('orch review: no contract — run /orch:setup'); return 1; }
+  if (!contract || !contract.domains || !Object.keys(contract.domains).length) { say('shepr review: no contract — run /shepr:setup'); return 1; }
   // FROZEN — domains: and base: as of the commit that introduced the ROUTE line (spec §5).
   const fz = L.frozen(g, goalN, contract);
-  if (fz.miss) { say(`orch review: ${fz.miss}`); return 1; }
+  if (fz.miss) { say(`shepr review: ${fz.miss}`); return 1; }
   // Dirty tree under the goal's paths, before any range exists (spec §3, r8 S2).
   const dirty = g(['status', '--porcelain', '--', ...fz.paths]).trim();
-  if (dirty) { say(`orch review: dirty tree under goal paths — commit first (ship: none → the Director commits):\n${dirty}`); return 1; }
+  if (dirty) { say(`shepr review: dirty tree under goal paths — commit first (ship: none → the Director commits):\n${dirty}`); return 1; }
   const slots = L.slotsFor(contract, fz.domains);
-  if (slots === 2 && !models['review-alt']) { say('orch review: dual review (a frozen domain carries review: "dual") but models.review-alt is not configured — /orch:setup asks for it; refusing rather than running single'); return 1; }
-  if (!models.review) { say('orch review: models.review is not configured — /orch:setup'); return 1; }
+  if (slots === 2 && !models['review-alt']) { say('shepr review: dual review (a frozen domain carries review: "dual") but models.review-alt is not configured — /shepr:setup asks for it; refusing rather than running single'); return 1; }
+  if (!models.review) { say('shepr review: models.review is not configured — /shepr:setup'); return 1; }
   const tier = L.reviewTier(contract, fz.domains);
   // Board — item and milestone come from the board once; the manifest carries them so the lint never asks GitHub.
   const bg = require('./board-gh');
   const bcfg = bg.loadCfg(cwd);
-  if (!bcfg) { say('orch review: no usable .orch/board.json — run /orch:board init'); return 1; }
+  if (!bcfg) { say('shepr review: no usable .orch/board.json — run /shepr:board init'); return 1; }
   const gh = deps.gh || require('./lib/gh').makeGh();
-  let goal; try { goal = bg.readBoard(gh, bcfg).goals.find(x => x.issue === goalN); } catch (e) { say(`orch review: board unreachable — ${e.message}`); return 1; }
-  if (!goal) { say(`orch review: no goal G${goalN} on the board`); return 1; }
+  let goal; try { goal = bg.readBoard(gh, bcfg).goals.find(x => x.issue === goalN); } catch (e) { say(`shepr review: board unreachable — ${e.message}`); return 1; }
+  if (!goal) { say(`shepr review: no goal G${goalN} on the board`); return 1; }
   const item = plan ? null : goal.items.find(i => i.step === stepArg);
-  if (!plan && !item) { say(`orch review: G${goalN} has no step ${stepArg}`); return 1; }
+  if (!plan && !item) { say(`shepr review: G${goalN} has no step ${stepArg}`); return 1; }
   const M = goal.milestone ? goal.milestone.number : 0;
   const unit = plan ? 'P' : stepArg;
   const revDir = path.join(root, 'docs', 'reviews');
@@ -92,13 +92,13 @@ function main(argv, deps = {}) {
   const id = `M${M}.G${goalN}.${unit}.R${R}`;
   // Range: base = latest passing step manifest by ancestry, else the frozen ROUTE base; head = HEAD now.
   const ch = L.chain(g, L.manifests(g, goalN));
-  if (ch.miss) { say(`orch review: ${ch.miss}`); return 1; }
+  if (ch.miss) { say(`shepr review: ${ch.miss}`); return 1; }
   const base = plan ? fz.base : (ch.chain.length ? ch.chain[ch.chain.length - 1].head : fz.base);
   const head = plan ? fz.base : g(['rev-parse', 'HEAD']).trim();
   // Rubrics: review-goal always; the step's recipe rubric (or spec for a plan round) when the file exists.
   const rubricDir = deps.rubricDir || path.join(__dirname, '..', 'skills', 'go', 'recipes');
   const names = ['review-goal', ...(plan ? ['spec'] : item.recipe ? [item.recipe] : [])].filter(nm => fs.existsSync(path.join(rubricDir, `${nm}.md`)));
-  if (!names.includes('review-goal')) { say(`orch review: rubric review-goal.md not found under ${rubricDir}`); return 1; }
+  if (!names.includes('review-goal')) { say(`shepr review: rubric review-goal.md not found under ${rubricDir}`); return 1; }
   const rubrics = names.map(nm => {
     const body = fs.readFileSync(path.join(rubricDir, `${nm}.md`), 'utf8'); const h = L.sha256(body);
     const copy = path.join(revDir, 'rubrics', `${nm}.${h}.md`);
@@ -114,7 +114,7 @@ function main(argv, deps = {}) {
   // Board: item In review at launch (spec §4 item Status row).
   if (item) {
     const rc = bg.main(['set-status', String(item.issue), 'In review'], { cwd, gh, commonDir, stdout: () => {}, lockCfg: deps.lockCfg, env: {} });
-    if (rc !== 0) { say(`orch review: board-gh set-status #${item.issue} "In review" failed`); return 1; }
+    if (rc !== 0) { say(`shepr review: board-gh set-status #${item.issue} "In review" failed`); return 1; }
   }
   const now = new Date().toISOString();
   const entry = { name: `review-${id}`, lane: `G${goalN}`, role: 'reviewer', vehicle: 'subprocess', status: 'running', ownerSessionId: deps.sessionId || process.env.CLAUDE_SESSION_ID || null, createdAt: now, lastSeen: now };

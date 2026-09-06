@@ -1,6 +1,6 @@
 # Workflow tools — one chosen skill per stage (spec §9, d.32)
 
-Loaded from `/orch:setup` step 6. `workflow.tools` in `.claude/orch.json`
+Loaded from `/shepr:setup` step 6. `workflow.tools` in `.claude/orch.json`
 maps a **stage key** to `"<skill>@<version>"` or `null`:
 
 ```json
@@ -22,7 +22,7 @@ re-pinned. Orch ships only the native column; every other cell is the
 operator's choice, recorded as data — no hook reads this map, and the gate
 rubric (`review-goal.md`) is extended by the `gate-rubric` pick, never
 replaced. The Coordinator has no row. Superpowers stays installed for the
-operator's own sessions; orch does not route to it.
+operator's own sessions; shepr does not route to it.
 
 Tracker rule: `to-spec`, `to-tickets` and `wayfinder` publish to an issue
 tracker. `board-gh` is the only board writer, so `tools.js pin` refuses

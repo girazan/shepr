@@ -1,14 +1,14 @@
 ---
 name: setup
 description: >
-  Onboard a repo onto the orch contract, edit contract domains, mirror the
+  Onboard a repo onto the shepr contract, edit contract domains, mirror the
   contract into the lock file, configure workflow tools, and ratify or
   reject proposed ADRs. The only place the contract changes.
-  Do NOT use for day-to-day work (/orch:go), creating goals
-  (/orch:goal), or viewing the board (/orch:board).
+  Do NOT use for day-to-day work (/shepr:go), creating goals
+  (/shepr:goal), or viewing the board (/shepr:board).
 ---
 
-# /orch:setup — contract governance
+# /shepr:setup — contract governance
 
 The contract is the operator's ONE decision: which domains are theirs.
 You interview, draft, and apply edits the operator approves — never
@@ -25,12 +25,12 @@ without them.
    tier (`low | mid | high | frontier`) allowed to implement (`work`) and
    review (`review`) in this domain. Floors, not caps; absent = the
    advisory tier table in delegate.md. `review` is INSTRUCTED (applied by
-   /orch:go at verdict time), `work` becomes hook-checked from v0.8.0.
+   /shepr:go at verdict time), `work` becomes hook-checked from v0.8.0.
    Record the WHY as `expertise` — future classification reads it to
    break ties. Ask whether verdicts in this domain need two independent reviewers; if yes write `review: "dual"` on the domain (the second comes from `models.review-alt`, which must then be set).
 3. Remind: omission never grants — unmatched work parks and proposes an
    amendment. Don't aim for total coverage on day one. (Classification
-   semantics are canonical in /orch:go § The contract.)
+   semantics are canonical in /shepr:go § The contract.)
 4. Write `.claude/orch.json` → `contract` with `"schemaVersion": 2` and
    `"version": 1` (schemaVersion identifies the data SHAPE only —
    tiers/models present — and is never itself an activation switch;
@@ -78,8 +78,8 @@ into the lock — no hook reads `workflow.tools`.
 1. `node "<plugin>/scripts/tools.js" list` — every stage with its native fallback (orch's own, always available), the recommended skill and whether it is installed. Show it native first: the operator may leave any stage `native`.
 2. If `find-skills` is installed (`~/.agents/skills/find-skills/SKILL.md` exists), offer `npx skills find <stage>` for any stage the operator wants a different skill for; otherwise offer only what `list` shows. One skill per stage, never a list.
 3. If any of `to-spec`, `to-tickets`, `wayfinder` is chosen, `docs/agents/issue-tracker.md` must carry the line `# Issue tracker: Local Markdown` — `pin` refuses otherwise. Tell the operator to run `/setup-matt-pocock-skills` and choose local markdown (files under `.scratch/`, gitignored); pointing that tracker at GitHub is a misconfiguration, because `board-gh` is the only board writer.
-4. `node "<plugin>/scripts/tools.js" pin <stage>=<skill|native> … --write` — pins each choice as `<skill>@<version>` into `.claude/orch.json` → `workflow.tools`. Show the printed map. Re-run after `npx skills update` or a plugin update: a changed version is a `mismatch` (that stage runs native) until re-pinned; `/orch:board` lists such stages.
-Ask `workflow.coordinator` — `native` (this session drives), `loop` (`/loop <interval> /orch:go`, one tick per invocation), or `herdr` (panes via `herdr agent start … --env ORCH_ROLE=…`); default `native`. Write it as `"workflow": { "coordinator": … }`.
+4. `node "<plugin>/scripts/tools.js" pin <stage>=<skill|native> … --write` — pins each choice as `<skill>@<version>` into `.claude/orch.json` → `workflow.tools`. Show the printed map. Re-run after `npx skills update` or a plugin update: a changed version is a `mismatch` (that stage runs native) until re-pinned; `/shepr:board` lists such stages.
+Ask `workflow.coordinator` — `native` (this session drives), `loop` (`/loop <interval> /shepr:go`, one tick per invocation), or `herdr` (panes via `herdr agent start … --env ORCH_ROLE=…`); default `native`. Write it as `"workflow": { "coordinator": … }`.
 Ask `workflow.dispatch` — `confirm` (every dispatch is a five-line proposal the Director answers Go / Edit brief / Skip / Stop) or `auto` (the same five lines go to the audit log and the tick proceeds); default `confirm`. Spec §12 says: run one milestone on `confirm` before switching.
 Fleet keys, all optional: `fleet.capacity` (ceiling, default 6), `fleet.staleMinutes` (ghost after, default 60), `fleet.pulseStaleMinutes` (board flags a stale Coordinator after, default 30).
 
@@ -108,7 +108,7 @@ Only on operator request. Preview first, then apply:
 
 ## Migrating to v0.10 (board on GitHub)
 
-- **v0.10 board on GitHub:** run `/orch:board init` (dry-run first;
+- **v0.10 board on GitHub:** run `/shepr:board init` (dry-run first;
   `--project N` to adopt an existing Project); commit `.orch/board.json`;
   if the lock has a `repos[<key>]` entry, write `board: { github: true }`
   into it (same atomic-replace path as contract); delete `docs/BOARD.md`
@@ -120,5 +120,5 @@ Only on operator request. Preview first, then apply:
 List `docs/adr/*` with `Status: proposed`. For each: show the amendment,
 ask accept / reject / defer. Accept → apply the contract edit + version
 bump, flip to `Status: accepted`. Reject → `Status: rejected` + one-line
-reason. Defer → leave; it resurfaces in `/orch:go`. A later ADR replacing
+reason. Defer → leave; it resurfaces in `/shepr:go`. A later ADR replacing
 an accepted one flips the old to `Status: superseded`.

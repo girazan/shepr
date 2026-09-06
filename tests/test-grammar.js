@@ -70,7 +70,7 @@ check('milestone states the description grammar', milestone.includes(MS_DESC));
 check('no other skill restates the milestone description grammar', ![go, goal, board, work, loop, setup].some(t => t.includes(MS_DESC)));
 for (const verb of ['define', 'split', 'prioritize', 'close']) check(`milestone has verb "${verb}"`, milestone.includes(`## ${verb}`));
 check('milestone skill refuses under ORCH_ROLE', milestone.includes('ORCH_ROLE'));
-check('milestone never creates goals itself', milestone.includes('/orch:goal') && !milestone.includes('add-goal'));
+check('milestone never creates goals itself', milestone.includes('/shepr:goal') && !milestone.includes('add-goal'));
 check('milestone prioritize uses move on a goal', milestone.includes('move G<n> <Priority option>'));
 
 // 6. BRIEF — six lines, canonical in goal; feature: is the primary domain, read by add-goal.
@@ -93,7 +93,7 @@ check('setup asks for review-alt', R('skills/setup/SKILL.md').includes('review-a
 check('setup runs sync-features after a domain edit', setup.includes('sync-features'));
 
 // 9. Five commands, stated once in README.
-check('README lists five commands', readme.includes('/orch:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
+check('README lists five commands', readme.includes('/shepr:milestone') && /Five commands/.test(readme) && readme.includes('one of these five'));
 
 // 10. Recipes — one page each in skills/go/recipes/; stages and rubric adds verbatim from spec §8.
 const { RECIPES } = require('../scripts/board-gh');
@@ -170,7 +170,7 @@ check('go records the focus pick in the marker', go.includes('session-marker.js"
 check('README counts eleven hooks and states the unlocked-contract degradation', /Eleven hooks/.test(readme) && readme.includes('advisory in fact') && readme.includes('contract: locked|unlocked'));
 
 // 10. Gate rounds — canonical in work.md; the go skill only names the verb.
-check('work states the gate invocation', work.includes('node "<plugin>/scripts/orch-review.js" G<k> --step S<j>'));
+check('work states the gate invocation', work.includes('node "<plugin>/scripts/shepr-review.js" G<k> --step S<j>'));
 check('work states the verdict rule', work.includes('pass → `done --goal G<k> --step S<j> <item#>` · fail → hand back to the same Dev with the manifest plus the failing test output and any conflict context, never a bare retry · inconclusive → `attention G<k> "inconclusive: <manifest>"`'));
 check('work states the fix-round rule', work.includes('Fix rounds count `fail` manifests for the step, not `R` numbers: fails 1–2 resume the same Dev pane; fail 3 = fresh Dev one tier up'));
 check('work says inconclusive rounds do not count', work.includes('Inconclusive rounds do not count.'));
@@ -181,7 +181,7 @@ check('README names the evidence lint and the worktree allowlist', readme.includ
 // 10. Coordinator (plan 5) — vehicles, proposal, branch/pane grammars, pulse, brief opening.
 check('go names the three vehicles once', go.includes('`native | loop | herdr`'));
 check('go routes the loop/herdr tick to coordinator.md', go.includes('load `coordinator.md`'));
-check('coordinator states the loop invocation', coord.includes('/loop <interval> /orch:go'));
+check('coordinator states the loop invocation', coord.includes('/loop <interval> /shepr:go'));
 for (const key of ['goal/step:', 'role/tier/recipe:', 'task:', 'domains/ship:', 'caps:']) check(`coordinator proposal has "${key}"`, coord.includes(key));
 check('no other skill restates the proposal', ![go, goal, board, work, loop, delegate].some(t => t.includes('role/tier/recipe:')));
 check('coordinator states the confirm options', coord.includes('Go / Edit brief / Skip / Stop'));

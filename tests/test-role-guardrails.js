@@ -50,7 +50,7 @@ check('empty stdin -> 0', spawnSync('node', [HOOK], { input: '', env: { ...proce
 
 // --- reviewer edits only docs/reviews/ ---------------------------------------------
 { const r = run('Write', 'src/a.js', 'reviewer');
-  check('reviewer Write src/ -> 2, says ADVISORY', r.code === 2 && /^BLOCKED \(orch role-guardrail, ADVISORY\)/m.test(r.err) && /docs\/reviews/.test(r.err));
+  check('reviewer Write src/ -> 2, says ADVISORY', r.code === 2 && /^BLOCKED \(shepr role-guardrail, ADVISORY\)/m.test(r.err) && /docs\/reviews/.test(r.err));
   check('audit line: role-guardrail, reviewer, label ADVISORY, file relative', last().action === 'role-guardrail' && last().role === 'reviewer' && last().label === 'ADVISORY' && last().file === 'src/a.js' && last().verdict === 'BLOCK'); }
 check('reviewer Edit docs/reviews/M53.G142.S2.R1-1.md -> 0', run('Edit', 'docs/reviews/M53.G142.S2.R1-1.md', 'reviewer', { old_string: 'a', new_string: 'b' }).code === 0);
 check('reviewer Write docs/reviews/rubrics/x.abc.md -> 0', run('Write', 'docs/reviews/rubrics/x.abc.md', 'reviewer', { content: '' }).code === 0);
@@ -59,7 +59,7 @@ check('reviewer Read src/ -> 0 (reads freely)', run('Read', 'src/a.js', 'reviewe
 
 // --- only a reviewer writes docs/reviews/ -----------------------------------------
 { const r = run('Write', 'docs/reviews/M53.G142.S2.R1.md', 'dev');
-  check('dev Write docs/reviews/ -> 2, names orch review', r.code === 2 && /orch review/.test(r.err) && last().role === 'dev'); }
+  check('dev Write docs/reviews/ -> 2, names shepr review', r.code === 2 && /shepr review/.test(r.err) && last().role === 'dev'); }
 check('architect Edit docs/reviews/ -> 2', run('Edit', 'docs/reviews/x.md', 'architect', { old_string: 'a', new_string: 'b' }).code === 2);
 check('coordinator Write docs/reviews/ -> 2', run('Write', 'docs/reviews/x.md', 'coordinator').code === 2);
 check('dev Write src/a.js -> 0', run('Write', 'src/a.js', 'dev', { content: 'x' }).code === 0);

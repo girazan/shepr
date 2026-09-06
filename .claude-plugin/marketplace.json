@@ -1,9 +1,11 @@
 {
-  "name": "orch",
-  "owner": { "name": "girazan" },
+  "name": "shepr",
+  "owner": {
+    "name": "girazan"
+  },
   "plugins": [
     {
-      "name": "orch",
+      "name": "shepr",
       "source": "./",
       "description": "The decision contract for AI-driven work: the human decides once which domains are theirs; frontier AI orchestrates, plans, reviews, and gates; cheap AI executes; shipping is enforced per contract by deterministic hooks; every decision leaves a record (audit trail, Rulings, ADRs)."
     }

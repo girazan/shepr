@@ -21,7 +21,7 @@ function write(ctx) {
   const str = name => { const v = opt[name]; if (v === true) throw new Error(`--${name} requires a value`); return typeof v === 'string' ? v : null; };
   const lockCfg = ctx.lockCfg || require('../hooks/lib/config').loadConfig({ cwd: ctx.cwd || process.cwd() });
   if (lockCfg.__repoLocked && !(lockCfg.board && lockCfg.board.github === true)) {
-    say('board-gh: this repo is locked and board.github is not enabled in ~/.claude/orch-lock.json — /orch:setup enables it.'); return 1;
+    say('board-gh: this repo is locked and board.github is not enabled in ~/.claude/orch-lock.json — /shepr:setup enables it.'); return 1;
   }
   // Director-only verbs (spec §10): milestones and goal priority are scope.
   // ADVISORY — ORCH_ROLE is env, not a credential — but the refusal runs
@@ -46,7 +46,7 @@ function write(ctx) {
   // just-created item has no parent link yet, so readBoard (sub-issues only)
   // cannot see it; a name/text match is not identity either.
   // ponytail: 100-issue probe window (newest first); paginate when a repo has
-  // >100 open+closed orch issues.
+  // >100 open+closed shepr issues.
   // Item bodies must keep `<!-- orch-item -->` as their last line, so the opId
   // marker goes just above it; goal bodies simply get it appended.
   const stamp = (body, opId) => (body.endsWith(MARK) ? body.slice(0, -MARK.length) + opTag(opId).slice(1) + '\n' + MARK : body + opTag(opId));
@@ -163,7 +163,7 @@ function write(ctx) {
 
   const laneOf = s => { const m = /^G(\d+)$/i.exec(s || ''); return m ? Number(m[1]) : null; };
   function goal(n) { const g = readBoard(gh, cfg).goals.find(x => x.issue === n); if (!g) throw new Error(`no goal G${n}`); return g; }
-  function findItem(n) { for (const g of readBoard(gh, cfg).goals) { const i = g.items.find(x => x.issue === n); if (i) return { g, i }; } throw new Error(`issue #${n} is not an orch item`); }
+  function findItem(n) { for (const g of readBoard(gh, cfg).goals) { const i = g.items.find(x => x.issue === n); if (i) return { g, i }; } throw new Error(`issue #${n} is not an shepr item`); }
   const statusOpt = s => { const k = STATUS_OPTS.find(x => x.toLowerCase() === String(s).toLowerCase()); if (!k) throw new Error(`status must be one of ${STATUS_OPTS.join(' | ')}`); return { name: k, id: cfg.optionIds.status[k] }; };
   // Any pass-through single-select (priority = buckets, pipeline, feature): option must already exist.
   function optionId(field, value) {

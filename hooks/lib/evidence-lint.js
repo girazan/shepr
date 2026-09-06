@@ -1,6 +1,6 @@
 // Evidence lint — spec §5, one algorithm: FROZEN / CHAIN / TARGET / legs
 // (a)–(f) / CLOSE TAIL. Git and the locked contract only; no network, no
-// GitHub, nothing read from the working tree. Both `orch review` (the
+// GitHub, nothing read from the working tree. Both `shepr review` (the
 // writer) and the ship gate (the verifier) compute base/paths/slots/tier
 // through these functions, so the two agree by construction.
 'use strict';

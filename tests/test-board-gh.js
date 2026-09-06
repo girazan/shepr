@@ -38,7 +38,7 @@ const pi = (status, pipeline, priority, feature) => ({ nodes: [{ project: { id: 
 
 // --- no config → refuse -------------------------------------------------------
 fs.rmSync(path.join(CWD, '.orch', 'board.json'), { force: true });
-{ const r = run(['read'], fakeGh([])); check('read without board.json refuses with init hint', r.code === 1 && /orch:board init/.test(r.out)); }
+{ const r = run(['read'], fakeGh([])); check('read without board.json refuses with init hint', r.code === 1 && /shepr:board init/.test(r.out)); }
 
 // --- milestones ---------------------------------------------------------------
 writeCfg(CFG);
@@ -65,7 +65,7 @@ const GOALS = { repository: { issues: { nodes: [
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('In progress', 'Engine', 'Now') },
       { number: 151, title: 'gate wired', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'gate wired\n\nstep: S2\ngate: GATE LIVE\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }] }, assignees: { nodes: [] }, projectItems: pi('Todo', null, 'Next') },
-      { number: 152, title: 'run /orch:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /orch:setup\n\nstep: S3\n<!-- orch-item -->',
+      { number: 152, title: 'run /shepr:setup', state: 'OPEN', updatedAt: '2026-09-02T00:00:00Z', body: 'run /shepr:setup\n\nstep: S3\n<!-- orch-item -->',
         labels: { nodes: [{ name: 'orch:item' }, { name: 'orch:you' }] }, assignees: { nodes: [{ login: 'me' }] }, projectItems: pi('Todo') } ] } },
   { number: 143, title: 'second goal', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', body: 'BRIEF\ngoal: y',
     milestone: { number: 49, title: 'C1 SHU-HDS operable' }, labels: { nodes: [{ name: 'orch:goal' }] }, projectItems: pi('Todo', null, 'Now'),
@@ -128,7 +128,7 @@ function ghStore() {
     [/GET user$/, () => ({ login: 'me' })],
     [/GET repos\/o\/r\/issues\?milestone=(\d+)&labels=orch:goal/, (b, k) => { const ms = Number(k.match(/milestone=(\d+)/)[1]); const real = Object.values(st.issues).filter(i => i.milestone === ms && i.labels.some(x => x.name === 'orch:goal')); const n = st.extraGoalsInMilestone; if (st.swapGoalInMilestone) return real.map((i, k) => k === 0 ? { number: 9100, labels: i.labels } : i); return n < 0 ? real.slice(0, real.length + n) : real.concat(Array.from({ length: n }, (_, i) => ({ number: 9000 + i, labels: [{ name: 'orch:goal' }] }))); }],
     [/GET repos\/o\/r\/issues\/(\d+)\/sub_issues/, (b, k) => { const p = Number(k.match(/issues\/(\d+)/)[1]); return Object.values(st.issues).filter(c => st.parent[c.number] === p).map(c => ({ number: c.number, body: c.body, state: c.state })); }],
-    // identity probe: all orch issues with the given label, newest first
+    // identity probe: all shepr issues with the given label, newest first
     [/GET repos\/o\/r\/issues\?/, (b, k) => { const l = decodeURIComponent(k.match(/labels=([^&]*)/)[1]);
       return Object.values(st.issues).filter(i => i.labels.some(x => x.name === l)).sort((a, c) => c.number - a.number); }],
     [/POST repos\/o\/r\/issues$/, b => { const n = st.next++; st.issues[n] = { number: n, id: 1000 + n, node_id: 'I_' + n, state: 'open', ...b, labels: (b.labels || []).map(x => ({ name: x })) }; return st.issues[n]; }],
@@ -180,7 +180,7 @@ writeCfg(CFG);
   r = run(['move', String(n2), 'Later'], gh);
   check('move sets Priority only', r.code === 0 && st.fields['PI_I_' + n2 + ':F_R'] === 'r3' && !st.comments[n2]);
   run(['move', String(n2), 'Next'], gh);
-  r = run(['add-item', 'G140', 'run /orch:setup', '--you'], gh);
+  r = run(['add-item', 'G140', 'run /shepr:setup', '--you'], gh);
   const ny = Number(r.out.trim());
   check('--you: orch:you + assignee, still a sub-issue', st.issues[ny].labels.some(l => l.name === 'orch:you') && st.issues[ny].assignees[0] === 'me' && st.parent[ny] === 140);
   r = run(['set-status', String(n1), 'In progress'], gh);

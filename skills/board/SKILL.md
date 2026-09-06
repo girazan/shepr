@@ -1,16 +1,16 @@
 ---
 name: board
 description: >
-  Render the orch route board: a read-only, forward-looking map of every
+  Render the shepr route board: a read-only, forward-looking map of every
   goal (buckets × tracks, the YOU owner row, gates, today's
   queue). Use when the operator wants to see progress, the path to done,
   stale goals, or pending ADRs — without starting any work. Do NOT use
-  to start, route, or ship anything — /orch:go acts; this only looks.
+  to start, route, or ship anything — /shepr:go acts; this only looks.
 ---
 
-# /orch:board — three commands act, this one looks
+# /shepr:board — three commands act, this one looks
 
-READ-ONLY. Never route, never delegate, never edit a file. Two announced exceptions: `/orch:board init` (below) and `/orch:board sync`, which runs `node "<plugin>/scripts/board-gh.js" sync-features` — the Feature options mirror the contract's domain names; announce what it added.
+READ-ONLY. Never route, never delegate, never edit a file. Two announced exceptions: `/shepr:board init` (below) and `/shepr:board sync`, which runs `node "<plugin>/scripts/board-gh.js" sync-features` — the Feature options mirror the contract's domain names; announce what it added.
 
 ## Gather (all best-effort — render what exists, label what doesn't)
 
@@ -19,7 +19,7 @@ READ-ONLY. Never route, never delegate, never edit a file. Two announced excepti
    `name`, `milestone`, folded `status`, `blocker`, `items[]` incl. YOU
    items flagged `you`, the gate item carrying `gate`). A `merged` goal with `unverified: true` renders `merged ⚠ unverified: <unverifiedReason>` — it was closed outside `board-gh`, or no passing round manifest covers its final range (spec §4). No
    `.orch/board.json` → say "board not initialised — run
-   `/orch:board init`" and stop. GitHub unreachable → say so and stop;
+   `/shepr:board init`" and stop. GitHub unreachable → say so and stop;
    never render from memory.
 2. Stale: an item's `updated` older than `board.staleDays`
    (`.claude/orch.json`, default 3) while its goal's status is unchanged
@@ -65,7 +65,7 @@ history. Buckets are the Project's `Priority` options — never invent one.
 The FLEET footer reads the roster and the audit log through the `fleet` verb; a `👻 ghost` is a delegate whose `lastSeen` is older than `fleet.staleMinutes`; a stale pulse means no Coordinator tick ran within `fleet.pulseStaleMinutes` (default 30).
 The `TOOLS:` line appears only when a pin is missing or mismatched; every pin holding → no line.
 
-## `/orch:board html`
+## `/shepr:board html`
 
 Run `read --json > tmp/board.json`, compute stale + digest as above, then:
 
@@ -76,12 +76,12 @@ Run `read --json > tmp/board.json`, compute stale + digest as above, then:
 
 Report the output path; do not open it unasked.
 
-## `/orch:board init` — the one write this command owns
+## `/shepr:board init` — the one write this command owns
 
 Announce it, run `node "<plugin>/scripts/board-gh.js" init [--project N] --dry-run`,
 show the DRY lines, and on the operator's go run it without `--dry-run`.
 `--project N` adopts an existing Project (i-Start: `--project 1`,
-Pertasim); otherwise a `<repo> · orch board` Project is created.
+Pertasim); otherwise a `<repo> · shepr board` Project is created.
 Idempotent; never creates milestones; never renames `Priority` options
 — tell the operator to rename `P0/P1/P2 → Now/Next/Later` in the
 Project settings first if they want those names. Commit

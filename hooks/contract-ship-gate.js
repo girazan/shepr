@@ -157,7 +157,7 @@ function git(cwdArg, args) {
 // and the lock is unreadable — their authority is unrecoverable, so fail
 // CLOSED rather than run ungated (spec §1).
 if (loadLock().corrupt) {
-  console.error('BLOCKED (orch): ~/.claude/orch-lock.json is corrupt — locked guard authority unrecoverable. Fix the lock file.');
+  console.error('BLOCKED (shepr): ~/.claude/orch-lock.json is corrupt — locked guard authority unrecoverable. Fix the lock file.');
   process.exit(2);
 }
 
@@ -181,13 +181,13 @@ if (CG || DN) {
       const im = /(?:^|\s)(\d+)(?=\s|$)/.exec(rest.replace(/--goal\s+\S+|--step\s+\S+/gi, ' '));
       if (!gm || !sm || !im) {
         appendAudit(root0, { action: 'done', verdict: 'BLOCK', reason: 'done: --goal G<n> --step S<j> <item#> required', by: 'hook' });
-        console.error('BLOCKED (orch ship-gate): use `board-gh done --goal G<n> --step S<j> <item#>` — the hook cannot map an item number to ids offline (spec §5).');
+        console.error('BLOCKED (shepr ship-gate): use `board-gh done --goal G<n> --step S<j> <item#>` — the hook cannot map an item number to ids offline (spec §5).');
         process.exit(2);
       }
       lane = `G${gm[1]}`; verb = { kind: 'done', goal: Number(gm[1]), step: Number(sm[1]), item: Number(im[1]) };
     }
     const action = CG ? 'close-goal' : 'done';
-    const block = reason => { appendAudit(root0, { action, lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (orch ship-gate): ${reason}`); process.exit(2); };
+    const block = reason => { appendAudit(root0, { action, lane, verdict: 'BLOCK', reason, by: 'hook' }); console.error(`BLOCKED (shepr ship-gate): ${reason}`); process.exit(2); };
     if (CG) {
       let files = [];
       try { files = git(root0, ['ls-tree', '--name-only', 'HEAD', 'tmp/worklogs/']).split(/\r?\n/).filter(Boolean); } catch {}
@@ -237,9 +237,9 @@ function die(reason, extra) {
   const r = auditRoot();
   if (r) {
     appendAudit(r, { action: (extra && extra.action) || label, ...(extra || {}), verdict: 'BLOCK', reason, by: 'hook' });
-    console.error(`BLOCKED (orch ship-gate): ${reason}`);
+    console.error(`BLOCKED (shepr ship-gate): ${reason}`);
   } else {
-    console.error(`BLOCKED (orch ship-gate): ${reason} (unaudited: no repo root)`);
+    console.error(`BLOCKED (shepr ship-gate): ${reason} (unaudited: no repo root)`);
   }
   process.exit(2);
 }
@@ -251,7 +251,7 @@ if (cfg.__corrupt) die('.claude/orch.json is not valid JSON — the contract can
 // exactly the drift this catches. Its evidence commit is the script's own
 // (child_process, unseen here). Holds with or without a contract.
 if (process.env.ORCH_ROLE === 'reviewer') {
-  die('ORCH_ROLE=reviewer — the gate reviewer never commits or pushes; `orch review` commits docs/reviews/ itself (ADVISORY: keyed on the role).', { role: 'reviewer', label: 'ADVISORY' });
+  die('ORCH_ROLE=reviewer — the gate reviewer never commits or pushes; `shepr review` commits docs/reviews/ itself (ADVISORY: keyed on the role).', { role: 'reviewer', label: 'ADVISORY' });
 }
 if (!contract) process.exit(0);
 // Contract key present: validate the WHOLE shape before any inactive/no-op decision.
@@ -361,7 +361,7 @@ if (cls.action > overall) {
   const who = governing === 'unmatched'
     ? 'no domain matches — omission never grants; write a proposed ADR amendment instead'
     : `domain "${governing}" grants "${Object.keys(RANK).find(k => RANK[k] === overall)}" — the operator ships this`;
-  console.error(`BLOCKED (orch ship-gate): git ${label} exceeds contract. ${who}. Files: ${offenders.slice(0, 5).join(', ')}${offenders.length > 5 ? ` +${offenders.length - 5} more` : ''}`);
+  console.error(`BLOCKED (shepr ship-gate): git ${label} exceeds contract. ${who}. Files: ${offenders.slice(0, 5).join(', ')}${offenders.length > 5 ? ` +${offenders.length - 5} more` : ''}`);
   process.exit(2);
 }
 appendAudit(root, { action: label, files, domain: governing, verdict: 'ALLOW', by: 'hook' });

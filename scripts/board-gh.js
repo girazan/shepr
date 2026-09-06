@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// board-gh — GitHub Issues + Projects v2 ARE the orch board (spec §4).
+// board-gh — GitHub Issues + Projects v2 ARE the shepr board (spec §4).
 // Milestone (operator's) → goal = Issue orch:goal → items = sub-issues.
 // Verbs: init · milestones · add-goal · add-item · move · set-status ·
 // set-blocker · clear-blocker · attention · done · close-goal · read.
@@ -118,7 +118,7 @@ function readBoard(gh, cfg, verify) {
 }
 
 // M<n> is the milestone grammar (spec §2); C<n> is the legacy prefix and
-// still ranks — orch never renames an existing milestone.
+// still ranks — shepr never renames an existing milestone.
 function milestoneRank(t) { const m = /^[MC](\d+)\b/.exec(t || ''); return m ? Number(m[1]) : t === 'backlog' ? 1e6 : 1e7; }
 function pagedMilestones(gh, R, state) { // REST pages at 100; a repo can have more
   const out = [];
@@ -145,7 +145,7 @@ function main(argv, deps = {}) {
   if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
-  if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/orch:board init` first.\n'); return 1; }
+  if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/shepr:board init` first.\n'); return 1; }
   if (verb === 'milestones') { stdout(JSON.stringify(listMilestones(gh, cfg), null, 2) + '\n'); return 0; }
   if (opt.goal === true) { stdout('board-gh: --goal requires a value\n'); return 1; }
   if (verb === 'read') {

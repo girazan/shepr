@@ -1,15 +1,15 @@
 ---
 name: go
 description: >
-  The orch session driver. Use for any work session after a goal exists:
+  The shepr session driver. Use for any work session after a goal exists:
   reads the board, worklogs, contract, and unratified ADRs, decides the
   current phase (route/work/ship/loop) by ordered precedence, acts, and
   reports. The human decides only what the contract reserves for them.
-  Do NOT use to shape a new goal (/orch:goal), edit the contract or
-  ratify ADRs (/orch:setup), or just view progress (/orch:board).
+  Do NOT use to shape a new goal (/shepr:goal), edit the contract or
+  ratify ADRs (/shepr:setup), or just view progress (/shepr:board).
 ---
 
-# /orch:go — the session driver
+# /shepr:go — the session driver
 
 Every board verb below runs as `node "<plugin>/scripts/board-gh.js" <verb> …`.
 
@@ -25,7 +25,7 @@ judgment, verdict-only; suited cheap models execute.
    If `workflow.coordinator` (`.claude/orch.json`, one of `native | loop | herdr`) is `loop` or `herdr`, or this session's `ORCH_ROLE` is `coordinator`, this invocation is one Coordinator tick: load `coordinator.md` and stop after its one action.
 2. Focus — exactly one goal per session when several are open:
    `blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue
-   (`/orch:go G142` names one). Never silently switch focus mid-session.
+   (`/shepr:go G142` names one). Never silently switch focus mid-session.
    Skip a candidate whose files (every domain in its `domains:`, by contract paths at HEAD) intersect a `running` goal's — two running goals never own a common file.
    A roled pane records the pick so the guardrails and the Stop rule know the focus goal: `node "<plugin>/scripts/session-marker.js" set --goal G<n>` (no-op message when `ORCH_SESSION_ID` is unset — a plain session has no marker).
 3. Report ≤5 lines, opening with
@@ -39,7 +39,7 @@ judgment, verdict-only; suited cheap models execute.
 | 0 | `workflow.coordinator` is `loop`/`herdr`, or `ORCH_ROLE=coordinator` | tick → load `coordinator.md` (one action, then stop) |
 | 1 | goal status `merged` | closed → report, stop; a merged goal never re-enters ship or loop |
 | 2 | operator's message asks for an autonomous run | loop → load `loop.md` |
-| 3 | no goal / no BRIEF | → point to `/orch:goal`, stop |
+| 3 | no goal / no BRIEF | → point to `/shepr:goal`, stop |
 | 4 | BRIEF, no `ROUTE:` line | route (below) |
 | 5 | `ROUTE:` exists, done-condition not evidenced | work → load `work.md` |
 | 6 | ledger satisfies the BRIEF's `done:` | ship (below) |
@@ -105,7 +105,7 @@ here; if wording ever differs, this section wins.
 2. Knowledge-gap re-check: if routing surfaces facts you can neither
    derive from the repo nor verify from training (post-cutoff APIs, niche
    domain facts, vendor specifics), run the research route (see
-   /orch:goal's shaping table) BEFORE writing the ROUTE line; cite its
+   /shepr:goal's shaping table) BEFORE writing the ROUTE line; cite its
    findings note in the worklog.
 3. Execution shape follows the step's `recipe:` (written at creation by
    the goal skill or the Architect; one page each under `recipes/`):
@@ -160,5 +160,5 @@ Audit mirror: consequential Rulings also append
 artifact path), never prose. ADRs (`docs/adr/NNNN-<slug>.md`,
 `Status: proposed|accepted|rejected|superseded`): pair mode → accepted on
 write; autopilot → ALWAYS proposed, surfaced in the report (step 3) until resolved via
-`/orch:setup`. Before compaction/clock-out: refresh the handoff — ① done
+`/shepr:setup`. Before compaction/clock-out: refresh the handoff — ① done
 ② next action ③ entry phase for the next session ④ blockers + owners.

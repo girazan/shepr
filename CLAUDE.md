@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Local markdown under `.scratch/<feature>/`; the orch board on GitHub is written only by `board-gh`. See `docs/agents/issue-tracker.md`.
+Local markdown under `.scratch/<feature>/`; the shepr board on GitHub is written only by `board-gh`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

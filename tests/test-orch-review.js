@@ -1,4 +1,4 @@
-// orch review: refusals, brief assembly, worktree lifecycle, slot/manifest
+// shepr review: refusals, brief assembly, worktree lifecycle, slot/manifest
 // grammar, board + roster side effects, the pathspec-limited commit, and
 // round-trip through the evidence lint. GitHub is a fake; the reviewer is
 // an injected function; the repo is real git.
@@ -7,9 +7,9 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const L = require('../hooks/lib/evidence-lint');
-const { main, SANTA, REPLY } = require('../scripts/orch-review');
+const { main, SANTA, REPLY } = require('../scripts/shepr-review');
 
-const SCRATCH = path.join(__dirname, 'scratch-orch-review');
+const SCRATCH = path.join(__dirname, 'scratch-shepr-review');
 const REPO = path.join(SCRATCH, 'repo');
 const RUBRICS = path.join(SCRATCH, 'recipes');
 fs.rmSync(SCRATCH, { recursive: true, force: true });

@@ -15,7 +15,7 @@ operator.
 4. Ledger, one line per stage used, appended by the Dev when the stage starts:
    `skill: <stage>=<name>`
    (`<name>` = the skill name, or `native`). The ROUTE line is unchanged.
-5. The recipe page's "Gate rubric adds" is the reviewer's rubric beside `recipes/review-goal.md` — the review ladder's step 2 reads both; plan 4's `orch review` hashes both into the manifest.
+5. The recipe page's "Gate rubric adds" is the reviewer's rubric beside `recipes/review-goal.md` — the review ladder's step 2 reads both; plan 4's `shepr review` hashes both into the manifest.
 
 ## Review ladder (per hand-back — order is mandatory)
 
@@ -61,7 +61,7 @@ driver, phase ship.
 ## Gate rounds (spec §5)
 
 The gate is a script, never a hand-written manifest:
-`node "<plugin>/scripts/orch-review.js" G<k> --step S<j>` (or `--plan`) — it refuses a dirty tree under the goal's paths, assembles the brief (rubric + diff + handoff + BRIEF), runs the tests on a detached worktree, spawns the reviewer slot(s), and writes and commits `docs/reviews/`.
+`node "<plugin>/scripts/shepr-review.js" G<k> --step S<j>` (or `--plan`) — it refuses a dirty tree under the goal's paths, assembles the brief (rubric + diff + handoff + BRIEF), runs the tests on a detached worktree, spawns the reviewer slot(s), and writes and commits `docs/reviews/`.
 Read the manifest's `verdict:` line and do exactly one thing:
 pass → `done --goal G<k> --step S<j> <item#>` · fail → hand back to the same Dev with the manifest plus the failing test output and any conflict context, never a bare retry · inconclusive → `attention G<k> "inconclusive: <manifest>"` and stop — when the Director clears it, re-run the gate as the next round with no Dev dispatch.
 Fix rounds count `fail` manifests for the step, not `R` numbers: fails 1–2 resume the same Dev pane; fail 3 = fresh Dev one tier up; a finding that survives two fails, or the same error or an empty diff twice, is a stall → Director. Inconclusive rounds do not count.

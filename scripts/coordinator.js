@@ -222,7 +222,7 @@ function milestoneSummary({ milestone, goals, line }) {
   return `M${milestone} · summary: ${line.trim()}\ngoals: ${mine.map(g => g.lane).join(' ')}\n`;
 }
 
-// /orch:board FLEET footer (v2 §3.4): counted entries, ghost = running/reserved with lastSeen older than fleet.staleMinutes.
+// /shepr:board FLEET footer (v2 §3.4): counted entries, ghost = running/reserved with lastSeen older than fleet.staleMinutes.
 function fleetLines(roster, now = Date.now(), staleMinutes = 60) {
   return (((roster || {}).delegates) || []).filter(d => COUNTED.has(d.status)).map(d => {
     const age = Math.round((now - Date.parse(d.lastSeen || 0)) / 60000);

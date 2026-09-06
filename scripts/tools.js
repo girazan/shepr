@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Skill routing (spec §9, d.32): workflow.tools maps a stage to ONE chosen
-// skill, pinned to the version installed when /orch:setup wrote it. This is
+// skill, pinned to the version installed when /shepr:setup wrote it. This is
 // data — no hook reads it. Skills call `check` (go, goal, board), setup
 // calls `list` and `pin`. Orch ships only the native column.
 'use strict';
@@ -101,7 +101,7 @@ function line(r) {
   if (r.status === 'native') return `${r.stage}: native (${r.native})`;
   if (r.status === 'ok') return `${r.stage}: ${r.skill}@${r.pin} ok · invoke: ${r.invoke} · ${r.path}`;
   if (r.status === 'missing') return `${r.stage}: ${r.skill}@${r.pin} missing → native (${r.native})`;
-  return `${r.stage}: ${r.skill}@${r.pin} mismatch (installed ${r.installed}) → native (${r.native}) — re-pin via /orch:setup`;
+  return `${r.stage}: ${r.skill}@${r.pin} mismatch (installed ${r.installed}) → native (${r.native}) — re-pin via /shepr:setup`;
 }
 
 function parseArgs(argv) {

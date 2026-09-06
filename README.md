@@ -1,10 +1,10 @@
-# 🎛️ orch
+# 🐑 shepr
 
 **You decide once which decisions are yours. The AI handles the rest — and
 can't ship past the line you drew.**
 
 You have intent and judgment, but only inside your specialty. Frontier AI
-now thinks and judges too, but every model has a budget and a price. orch
+now thinks and judges too, but every model has a budget and a price. shepr
 splits work along both limits: you write down which domains are really
 yours, and in the ones that aren't, a *second* AI — different model, fresh
 conversation — stands in as the judge, because two independent readers beat
@@ -16,8 +16,8 @@ high-end reviews, mid-tier executes, cheap does the mechanical work.
 ## 📦 Install
 
 ```
-/plugin marketplace add girazan/orch
-/plugin install orch@orch
+/plugin marketplace add girazan/shepr
+/plugin install shepr@shepr
 ```
 
 ## 📜 The contract
@@ -47,7 +47,7 @@ One file, `.claude/orch.json`, at your repo root:
   isn't. Since v0.7.0 the mirrored contract lives under
   `repos[<this repo's git common dir>]` in the lock file, not the lock's
   top level — so one lock file safely holds different contracts for
-  different repos. `/orch:setup` handles this automatically; existing
+  different repos. `/shepr:setup` handles this automatically; existing
   locks migrate via `node scripts/migrate-lock.js` (safe to re-run).
 - Domains may optionally carry `tiers: { work, review }` floors (schema 2, `schemaVersion` field required).
   `work` is the minimum tier a delegate may implement at in that domain (advisory only in v0.7.0 —
@@ -61,11 +61,11 @@ One file, `.claude/orch.json`, at your repo root:
 
 | Command | When | What |
 |---|---|---|
-| 🔐 `/orch:setup` | once per repo | interviews you into a contract, offers lock mirroring, pins `workflow.tools` (one skill per stage of work, native fallback otherwise), ratifies ADRs |
-| 🏁 `/orch:milestone` | scope, Director only | `define` (three questions → `M<n> · <objective>` with `target:` and `done:`), `split` (proposes goals from the Feature options, creates nothing), `prioritize` (`move G<n> …`), `close` (all goals merged, summary acknowledged). Refuses in any pane with `ORCH_ROLE` — a guardrail, not a credential. |
-| 🎯 `/orch:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
-| 🚦 `/orch:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says. Under `workflow.coordinator` = `loop` or `herdr` (`native | loop | herdr`) each invocation is one Coordinator tick — pick one goal, dispatch one step with a five-line proposal (`workflow.dispatch` = `confirm | auto`), read one verdict, or open one PR — and writes a pulse line; `/loop 10m /orch:go` is the whole loop vehicle. |
-| 📊 `/orch:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/orch:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Reads the Project's existing `Priority` options as the buckets — rename `P0/P1/P2` → `Now/Next/Later` in the Project settings first if you want those names. Fsyncs journal. Read-only after; FLEET footer (delegates, ghosts, pulse age, out-of-scope commits), plus `sync` (mirrors Feature options from the contract); requires GitHub. `html` for shareable page. |
+| 🔐 `/shepr:setup` | once per repo | interviews you into a contract, offers lock mirroring, pins `workflow.tools` (one skill per stage of work, native fallback otherwise), ratifies ADRs |
+| 🏁 `/shepr:milestone` | scope, Director only | `define` (three questions → `M<n> · <objective>` with `target:` and `done:`), `split` (proposes goals from the Feature options, creates nothing), `prioritize` (`move G<n> …`), `close` (all goals merged, summary acknowledged). Refuses in any pane with `ORCH_ROLE` — a guardrail, not a credential. |
+| 🎯 `/shepr:goal` | per piece of work | shapes a one-page brief: goal, metric, done-condition, kill criteria |
+| 🚦 `/shepr:go` | every session after | reads the board and contract, picks its own phase (route → work → ship, or a whole unattended loop), stops only where your contract says. Under `workflow.coordinator` = `loop` or `herdr` (`native | loop | herdr`) each invocation is one Coordinator tick — pick one goal, dispatch one step with a five-line proposal (`workflow.dispatch` = `confirm | auto`), read one verdict, or open one PR — and writes a pulse line; `/loop 10m /shepr:go` is the whole loop vehicle. |
+| 📊 `/shepr:board` | set up once, then read | board lives on GitHub: Milestone (top level) → goal `G<n>` (orch:goal issue) → items (sub-issues, one marked `gate: <LABEL>` for done-condition). Init: `/shepr:board init [--project N] [--owner <login>] [--dry-run]` — `--project N` adopts existing Project; `--owner <login>` when Project owner ≠ repo owner; `--dry-run` prints, writes nothing. Reads the Project's existing `Priority` options as the buckets — rename `P0/P1/P2` → `Now/Next/Later` in the Project settings first if you want those names. Fsyncs journal. Read-only after; FLEET footer (delegates, ghosts, pulse age, out-of-scope commits), plus `sync` (mirrors Feature options from the contract); requires GitHub. `html` for shareable page. |
 
 There is no bare `/orch` — always one of these five. [Architecture diagram →](docs/orch-architecture.html)
 
@@ -93,7 +93,7 @@ push before you run `git remote set-head origin -a` once — the gate never asks
 override. And it is **not a sandbox**: it reads the commands the AI types,
 so a script that runs `git` from inside is out of its sight.
 Role guardrails (`ORCH_ROLE`) are **advisory** by design — the role is an environment variable any pane can set, and a `cat` inside a script is a read no hook sees.
-And until `/orch:setup` mirrors your contract into `~/.claude/orch-lock.json`, every contract-keyed guard reads the agent-writable `.claude/orch.json`: enforced in mechanism, advisory in fact. Each audit line says which it read (`contract: locked|unlocked`).
+And until `/shepr:setup` mirrors your contract into `~/.claude/orch-lock.json`, every contract-keyed guard reads the agent-writable `.claude/orch.json`: enforced in mechanism, advisory in fact. Each audit line says which it read (`contract: locked|unlocked`).
 
 ## 🧾 What it leaves behind
 
@@ -128,7 +128,7 @@ never silently disable a guard.
 
 ## 📖 Glossary
 
-**goal** one finite deliverable (`G<n>` issue), an orch:goal issue on the board · **milestone** GitHub's top-level Milestone: `M<n> · <objective>` with `target:` and `done:` in its description — created only by the Director via `/orch:milestone`; legacy `C<n>` titles still sort · **feature** the Project's Feature options are the contract's domain names — the workstream a goal belongs to, never part of an id · **board** the status
+**goal** one finite deliverable (`G<n>` issue), an orch:goal issue on the board · **milestone** GitHub's top-level Milestone: `M<n> · <objective>` with `target:` and `done:` in its description — created only by the Director via `/shepr:milestone`; legacy `C<n>` titles still sort · **feature** the Project's Feature options are the contract's domain names — the workstream a goal belongs to, never part of an id · **board** the status
 table, one row per goal (kanban, GitHub Issues + Projects v2) · **worklog** a goal's running notebook ·
 **ledger line** one-line summary of one work round · **review ladder**
 staged checking, cheap → expensive (quality gates) · **merge gate** the

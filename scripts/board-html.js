@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// board-html — deterministic renderer for /orch:board's HTML view.
+// board-html — deterministic renderer for /shepr:board's HTML view.
 // The SKILL (model) owns judgment (stale detection, digest, queue order)
 // and passes it as args; this script owns parsing + rendering only, so
 // its output is testable and its failures are boring.
