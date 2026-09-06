@@ -204,6 +204,24 @@ function handback({ round, manifestText, failingOutput, conflicts }) {
     ...(conflicts && conflicts.trim() ? ['', '--- conflict context ---', conflicts.trim()] : []), ''].join('\n');
 }
 
+// d.33: one branch per goal, from the ROUTE base: at first pick.
+const branchName = (goal, name) => `goal/${goal}-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}`;
+// One PR per goal: title `G<k> · <name>`, body = BRIEF + links to every passing manifest.
+function prText({ goal, name, brief, manifests }) {
+  const passing = (manifests || []).filter(m => verdictOf(m.text) === 'pass').map(m => m.path).sort();
+  if (!passing.length) throw new Error(`pr-text: ${goal} has no passing manifest — nothing to open a PR on`);
+  return { title: `${goal} · ${name}`, body: `${brief.trim()}\n\n## Evidence\n${passing.map(p => `- ${p}`).join('\n')}\n` };
+}
+// §7 step 8: the summary line is judged by the Coordinator against done:; the script only checks completeness and writes it.
+function milestoneSummary({ milestone, goals, line }) {
+  const mine = goals.filter(g => g.milestone && g.milestone.number === Number(milestone));
+  if (!mine.length) throw new Error(`milestone-summary: M${milestone} has no goals`);
+  const open = mine.filter(g => g.status !== 'merged');
+  if (open.length) throw new Error(`milestone-summary: not merged: ${open.map(g => g.lane).join(' ')}`);
+  if (!line || !line.trim()) throw new Error('milestone-summary: --line "<one line against done:>" is required');
+  return `M${milestone} · summary: ${line.trim()}\ngoals: ${mine.map(g => g.lane).join(' ')}\n`;
+}
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -238,13 +256,13 @@ function main(argv, deps = {}) {
   const verb = pos[0];
   const commonDir = deps.commonDir || resolveRepoKey(cwd);
   const cfg = deps.config || loadConfig({ cwd });
+  const board = () => { try { return deps.board ? deps.board() : require('./board-gh').readBoard(require('./lib/gh').makeGh(), require('./board-gh').loadCfg(cwd)); } catch (e) { throw new Error(`board unreachable: ${e.message}`); } };
   const VERBS = {
     tick() {
-      let board;
-      try { board = deps.board ? deps.board() : require('./board-gh').readBoard(require('./lib/gh').makeGh(), require('./board-gh').loadCfg(cwd)); }
-      catch (e) { stdout(`coordinator: board unreachable: ${e.message}\n`); return 1; }
+      let b;
+      try { b = board(); } catch (e) { stdout(`coordinator: ${e.message}\n`); return 1; }
       const lsFiles = deps.lsFiles ? deps.lsFiles() : sh(cwd, 'git', ['ls-files']).split(/\r?\n/).filter(Boolean);
-      const t = tick({ goals: board.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
+      const t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
         capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now,
         worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
         manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
@@ -300,6 +318,25 @@ function main(argv, deps = {}) {
       stdout(JSON.stringify({ manifest: last.path, verdict: verdictOf(last.text), ...v }) + '\n');
       return v.cmd ? 0 : 1;
     },
+    'pr-text'() {
+      const lane = String(pos[1] || '').toUpperCase();
+      if (!/^G\d+$/.test(lane)) { stdout('usage: pr-text G<k>\n'); return 1; }
+      let g; try { g = board().goals.find(x => x.lane === lane); } catch (e) { stdout(`coordinator: ${e.message}\n`); return 1; }
+      if (!g) { stdout(`pr-text: ${lane} is not on the board\n`); return 1; }
+      const dir = path.join(cwd, 'docs', 'reviews');
+      let ms = []; try { ms = fs.readdirSync(dir).filter(f => new RegExp(`^M\\d+\\.${lane}\\.S\\d+\\.R\\d+\\.md$`).test(f)).map(f => ({ path: `docs/reviews/${f}`, text: fs.readFileSync(path.join(dir, f), 'utf8') })); } catch { /* none */ }
+      try { const t = prText({ goal: lane, name: g.name, brief: g.brief, manifests: ms }); stdout(`${t.title}\n\n${t.body}`); return 0; }
+      catch (e) { stdout(e.message + '\n'); return 1; }
+    },
+    'milestone-summary'() {
+      const m = /^M?(\d+)$/i.exec(pos[1] || '');
+      if (!m || typeof opt.line !== 'string') { stdout('usage: milestone-summary M<n> --line "<one line against done:>"\n'); return 1; }
+      let text; try { text = milestoneSummary({ milestone: Number(m[1]), goals: board().goals, line: opt.line }); } catch (e) { stdout(e.message + '\n'); return 1; }
+      const p = path.join(cwd, 'tmp', 'handoffs', `M${m[1]}-coordinator.md`);
+      fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text);
+      stdout(`${path.relative(cwd, p).replace(/\\/g, '/')}\n`);
+      return 0;
+    },
   };
   if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
   return VERBS[verb]() || 0;
@@ -307,4 +344,4 @@ function main(argv, deps = {}) {
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch,
-  noProgress, fixRound, verdictAction, handback, firstError };
+  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary };

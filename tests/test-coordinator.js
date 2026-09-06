@@ -208,5 +208,29 @@ check('firstError picks the first error-looking line', C.firstError('ok 1\nFAIL 
   check('main verdict: highest round, verb line, pulse with manifest', v.manifest === 'docs/reviews/M53.G142.S2.R3.md' && v.cmd === 'set-status 151 "In progress"' && /"action":"verdict","manifest":"docs\/reviews\/M53.G142.S2.R3.md"/.test(fs.readFileSync(path.join(CWD, '.claude', 'orch-audit.jsonl'), 'utf8')));
 }
 
+// --- branch, PR, milestone (d.33, §7 steps 7–8) -----------------------------------------
+check('branchName slugs the goal name', C.branchName('G142', 'Knowledge gate: ship it!') === 'goal/G142-knowledge-gate-ship-it');
+check('branchName caps the slug at 40 chars', C.branchName('G1', 'a'.repeat(60)).length === 'goal/G1-'.length + 40);
+const MFS = [{ path: 'docs/reviews/M53.G142.S1.R1.md', text: 'verdict: pass\n' }, { path: 'docs/reviews/M53.G142.S2.R1.md', text: 'verdict: fail\n' }, { path: 'docs/reviews/M53.G142.S2.R2.md', text: 'verdict: pass\n' }];
+const pr = C.prText({ goal: 'G142', name: 'knowledge-gate', brief: 'BRIEF\ngoal: g\n', manifests: MFS });
+check('prText: title G<k> · <name>; body = BRIEF + passing manifests only', pr.title === 'G142 · knowledge-gate' && pr.body === 'BRIEF\ngoal: g\n\n## Evidence\n- docs/reviews/M53.G142.S1.R1.md\n- docs/reviews/M53.G142.S2.R2.md\n');
+threw = false; try { C.prText({ goal: 'G1', name: 'x', brief: 'B', manifests: [{ path: 'p', text: 'verdict: fail\n' }] }); } catch { threw = true; }
+check('prText refuses a goal with no passing manifest', threw);
+const MG = [{ lane: 'G1', status: 'merged', milestone: { number: 53 } }, { lane: 'G2', status: 'merged', milestone: { number: 53 } }, { lane: 'G3', status: 'ready', milestone: { number: 54 } }];
+check('milestoneSummary: one line against done:, goals listed', C.milestoneSummary({ milestone: 53, goals: MG, line: 'operator ran a shift alone' }) === 'M53 · summary: operator ran a shift alone\ngoals: G1 G2\n');
+threw = false; try { C.milestoneSummary({ milestone: 53, goals: MG.concat([{ lane: 'G9', status: 'running', milestone: { number: 53 } }]), line: 'x' }); } catch (e) { threw = /not merged: G9/.test(e.message); }
+check('milestoneSummary refuses while a goal is not merged, names it', threw);
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), now: T0, board: () => ({ goals: [{ ...goal('G142', 'ready', 'hmi'), name: 'knowledge-gate', milestone: { number: 53 } }, { lane: 'G1', status: 'merged', milestone: { number: 53 } }] }) };
+  let out = ''; const c0 = C.main(['pr-text', 'G142'], { ...deps, stdout: s => { out += s; } });
+  check('main pr-text: no passing manifest on disk → refused', c0 === 1 && /no passing manifest/.test(out));
+  fs.writeFileSync(path.join(CWD, 'docs', 'reviews', 'M53.G142.S1.R1.md'), 'review: M53.G142.S1.R1\nverdict: pass\n');
+  out = ''; const c = C.main(['pr-text', 'G142'], { ...deps, stdout: s => { out += s; } });
+  check('main pr-text: title, blank line, body with the passing manifest only', c === 0 && out.startsWith('G142 · knowledge-gate\n\nBRIEF\n') && out.endsWith('## Evidence\n- docs/reviews/M53.G142.S1.R1.md\n') && !/S2\.R3/.test(out));
+  out = ''; const c2 = C.main(['milestone-summary', 'M53', '--line', 'shift ran alone'], { ...deps, board: () => ({ goals: [{ lane: 'G1', status: 'merged', milestone: { number: 53 } }] }), stdout: s => { out += s; } });
+  check('main milestone-summary writes tmp/handoffs/M<n>-coordinator.md', c2 === 0 && fs.readFileSync(path.join(CWD, 'tmp', 'handoffs', 'M53-coordinator.md'), 'utf8') === 'M53 · summary: shift ran alone\ngoals: G1\n' && /M53-coordinator\.md/.test(out));
+}
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
