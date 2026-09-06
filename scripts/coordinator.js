@@ -222,6 +222,29 @@ function milestoneSummary({ milestone, goals, line }) {
   return `M${milestone} · summary: ${line.trim()}\ngoals: ${mine.map(g => g.lane).join(' ')}\n`;
 }
 
+// /orch:board FLEET footer (v2 §3.4): counted entries, ghost = running/reserved with lastSeen older than fleet.staleMinutes.
+function fleetLines(roster, now = Date.now(), staleMinutes = 60) {
+  return (((roster || {}).delegates) || []).filter(d => COUNTED.has(d.status)).map(d => {
+    const age = Math.round((now - Date.parse(d.lastSeen || 0)) / 60000);
+    return `${d.name} · ${d.lane} · ${d.role} · ${d.vehicle} · ${d.status} · ${age}m${age > staleMinutes ? ' 👻 ghost' : ''}`;
+  });
+}
+// §5 residual: a Dev commit outside the goal's domains is not reviewed under this goal — list it for the Director.
+function outOfScope(commits, goalPaths, otherPaths) {
+  const goal = goalPaths.map(globToRe), other = otherPaths.map(globToRe), ev = EVIDENCE.map(globToRe);
+  return commits.map(c => ({ sha: c.sha, files: c.files.map(f => f.replace(/\\/g, '/')).filter(f => !ev.some(r => r.test(f)) && !goal.some(r => r.test(f)) && other.some(r => r.test(f))) }))
+    .filter(c => c.files.length);
+}
+function gitLogFiles(cwd, base) { // [{sha, files}] for base..HEAD
+  const out = sh(cwd, 'git', ['log', `${base}..HEAD`, '--name-only', '--format=%H']);
+  const commits = []; let cur = null;
+  for (const line of out.split(/\r?\n/)) {
+    if (/^[0-9a-f]{40}$/.test(line)) { cur = { sha: line, files: [] }; commits.push(cur); }
+    else if (line.trim() && cur) cur.files.push(line.trim());
+  }
+  return commits;
+}
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -337,6 +360,27 @@ function main(argv, deps = {}) {
       stdout(`${path.relative(cwd, p).replace(/\\/g, '/')}\n`);
       return 0;
     },
+    fleet() {
+      const roster = readRoster(commonDir);
+      const audit = readAudit(cwd);
+      const age = pulseAge(audit, now);
+      const staleAfter = (cfg.fleet && cfg.fleet.pulseStaleMinutes) || 30;
+      const contract = cfg.contract || { domains: {} };
+      const pathsOf = names => names.flatMap(d => ((contract.domains[d] || {}).paths) || []);
+      let goals = []; try { goals = board().goals; } catch (e) { stdout(`coordinator: ${e.message}\n`); return 1; }
+      const oos = {};
+      for (const g of goals.filter(x => x.status === 'running')) {
+        const wl = worklogPath(cwd, g.lane); const text = wl ? fs.readFileSync(wl, 'utf8') : '';
+        const base = (new RegExp(`^ROUTE: lane:${g.lane} .*· base:([0-9a-f]+)`, 'm').exec(text) || [])[1];
+        if (!base) continue;
+        const mine = domainsOf(g.brief), others = Object.keys(contract.domains).filter(d => !mine.includes(d));
+        const commits = deps.gitLog ? deps.gitLog(base) : gitLogFiles(cwd, base);
+        const hits = outOfScope(commits, pathsOf(mine), pathsOf(others));
+        if (hits.length) oos[g.lane] = hits;
+      }
+      stdout(JSON.stringify({ fleet: fleetLines(roster, now, (cfg.fleet && cfg.fleet.staleMinutes) || 60), pulse: { age, stale: age === null || age > staleAfter }, outOfScope: oos }, null, 2) + '\n');
+      return 0;
+    },
   };
   if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
   return VERBS[verb]() || 0;
@@ -344,4 +388,4 @@ function main(argv, deps = {}) {
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch,
-  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary };
+  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope };

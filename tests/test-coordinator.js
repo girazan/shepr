@@ -232,5 +232,28 @@ check('milestoneSummary refuses while a goal is not merged, names it', threw);
   check('main milestone-summary writes tmp/handoffs/M<n>-coordinator.md', c2 === 0 && fs.readFileSync(path.join(CWD, 'tmp', 'handoffs', 'M53-coordinator.md'), 'utf8') === 'M53 · summary: shift ran alone\ngoals: G1\n' && /M53-coordinator\.md/.test(out));
 }
 
+// --- fleet footer / out-of-scope (§5 residual) --------------------------------------------
+const R2 = { delegates: [
+  { name: 'impl-G6-S1', lane: 'G6', role: 'mid', vehicle: 'herdr', status: 'running', lastSeen: '2026-09-06T09:50:00Z' },
+  { name: 'impl-G2-S3', lane: 'G2', role: 'high', vehicle: 'loop', status: 'running', lastSeen: '2026-09-06T08:00:00Z' },
+  { name: 'reviewer-G6-S1-R1', lane: 'G6', role: 'high', vehicle: 'native', status: 'reserved', lastSeen: '2026-09-06T09:59:00Z' },
+  { name: 'old', lane: 'G1', role: 'mid', vehicle: 'loop', status: 'done', lastSeen: '2026-09-06T09:59:00Z' } ] };
+const FL = C.fleetLines(R2, T0, 60);
+check('fleetLines: counted entries only, ghost flagged by lastSeen age', FL.length === 3 && FL[0] === 'impl-G6-S1 · G6 · mid · herdr · running · 10m' && FL[1] === 'impl-G2-S3 · G2 · high · loop · running · 120m 👻 ghost' && FL[2].startsWith('reviewer-G6-S1-R1 · G6 · high · native · reserved'));
+const COMMITS = [{ sha: 'aaa1111', files: ['src/Hmi.Web/a.cs', 'docs/reviews/M1.G6.S1.R1.md'] }, { sha: 'bbb2222', files: ['src/Core/calc.cs', 'src/Hmi.Web/b.cs'] }, { sha: 'ccc3333', files: ['README.md'] }];
+const OOS = C.outOfScope(COMMITS, ['src/Hmi.Web/**'], ['src/Core/**', 'src/Shared/**']);
+check('outOfScope: commits touching another domain, evidence and unmatched files ignored', JSON.stringify(OOS) === '[{"sha":"bbb2222","files":["src/Core/calc.cs"]}]');
+{
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');
+  fs.mkdirSync(path.join(CWD, '.git', 'orch'), { recursive: true }); fs.writeFileSync(path.join(CWD, '.git', 'orch', 'fleet.json'), JSON.stringify(R2));
+  fs.mkdirSync(path.join(CWD, 'tmp', 'worklogs'), { recursive: true });
+  fs.writeFileSync(path.join(CWD, 'tmp', 'worklogs', 'G6-x.md'), 'BRIEF\nROUTE: lane:G6 · hmi · decide:ai · ship:commit · tier:mid · base:abc123 · review:single · approved:auto · 2026-09-06\n');
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), now: T0, board: () => ({ goals: [goal('G6', 'running', 'hmi')] }),
+    gitLog: (base) => (base === 'abc123' ? COMMITS : []) };
+  let out = ''; const c = C.main(['fleet'], { ...deps, stdout: s => { out += s; } });
+  const j = JSON.parse(out);
+  check('main fleet: lines, pulse age/stale, out-of-scope per running goal from its ROUTE base:', c === 0 && j.fleet.length === 3 && typeof j.pulse.age === 'number' && j.pulse.stale === (j.pulse.age > 30) && JSON.stringify(j.outOfScope) === '{"G6":[{"sha":"bbb2222","files":["src/Core/calc.cs"]}]}');
+}
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
