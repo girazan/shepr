@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.5 — 2026-09-07
+
+### Added
+- **One Coordinator per milestone.** A pane carrying `ORCH_IDS=M<n>` picks only from M<n>'s goals, so two Coordinators can drive two milestones in one repo; `coordinator tick` also takes `--milestone M<n>` as an override. An unscoped pane stays board-wide — today's single-Coordinator behaviour is unchanged, and a malformed scope throws instead of silently widening.
+- The scope narrows the CANDIDATES only: rule 5's file-overlap check still computes its running set over **every** goal on the board, so an M53 lane blocks an overlapping M54 candidate. Without that, two Coordinators dispatch lanes that edit the same files. A named goal outside the scope is refused (`rule 6: outside M<n>`), never silently retargeted.
+- Pulse lines carry `milestone`, and `pulseAge` filters on it — a live M54 no longer keeps a dead M53 Coordinator looking fresh. Fleet capacity stays the repo's one shared ceiling: scoped Coordinators race for the same slots and the loser reports `wait-capacity`.
+
 ## 0.9.4 — 2026-09-07
 
 ### Fixed
