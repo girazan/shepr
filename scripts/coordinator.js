@@ -31,17 +31,29 @@ function filesOfDomains(lsFiles, contract, domains) {
 
 // Spec §4 goal pick, rules 0–5. `goals` arrive in board order (plan 1's
 // Priority → milestone → issue sort) — rules 3–4 are that order, never re-sorted here.
-// `scope` (M<n>, from the pane's ORCH_IDS — one Coordinator per milestone)
-// narrows the CANDIDATES only. `running` is still computed over EVERY goal:
-// rule 5's file-overlap check must see the other milestone's resident lanes,
-// or two Coordinators dispatch lanes that edit the same files.
+// `scope` (from the pane's ORCH_IDS — one Coordinator per milestone) narrows
+// the CANDIDATES only. `running` is still computed over EVERY goal: rule 5's
+// file-overlap check must see the other milestone's resident lanes, or two
+// Coordinators dispatch lanes that edit the same files.
+//
+// Two spellings, because a board predating /shepr:milestone has its own
+// titles: `M<n>` is the GitHub milestone NUMBER (shepr's own grammar —
+// add-milestone titles it `M<n> · …`, so name and number agree), `C<n>` is
+// the legacy TITLE prefix that milestoneRank already ranks. On a hand-made
+// board "C1 SHU-HDS operable" is milestone #49, so M49 and C1 are the same
+// milestone by two routes; C<n> is the one a human actually says.
 function pick({ goals, named, filesOf, scope }) {
   const skipped = [];
   const running = goals.filter(g => g.status === 'running').map(g => ({ lane: g.lane, files: new Set(filesOf(g)) }));
-  const sm = scope ? /^M(\d+)$/.exec(String(scope)) : null;
-  if (scope && !sm) throw new Error(`pick: scope must match M<n>, got ${scope}`);
-  const mNum = sm ? Number(sm[1]) : null;
-  const inScope = g => mNum === null || (g.milestone && g.milestone.number === mNum);
+  const sm = scope ? /^([MC])(\d+)$/.exec(String(scope).trim()) : null;
+  if (scope && !sm) throw new Error(`pick: scope must match M<n> or C<n>, got ${scope}`);
+  const sNum = sm ? Number(sm[2]) : null;
+  const byTitle = sm && sm[1] === 'C' && new RegExp('^C' + sNum + '(?![0-9])');
+  const inScope = g => {
+    if (!sm) return true;
+    if (!g.milestone) return false;
+    return byTitle ? byTitle.test(g.milestone.title || '') : g.milestone.number === sNum;
+  };
   const overlap = g => {
     const mine = filesOf(g);
     for (const r of running) { if (r.lane === g.lane) continue; const hit = mine.find(f => r.files.has(f)); if (hit) return `rule 5: shares ${hit} with ${r.lane}`; }
@@ -280,7 +292,7 @@ function sh(cwd, cmd, args) {
 function tickScope(opt, commonDir, env) {
   const flag = typeof opt.milestone === 'string' ? opt.milestone.trim() : null;
   if (flag) {
-    if (!/^M\d+$/.test(flag)) throw new Error(`--milestone must match M<n>, got ${flag}`);
+    if (!/^[MC]\d+$/.test(flag)) throw new Error(`--milestone must match M<n> or C<n>, got ${flag}`);
     return flag;
   }
   const sid = env.ORCH_SESSION_ID;

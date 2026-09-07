@@ -1,6 +1,6 @@
 // Session marker — <git-common-dir>/orch/session-<sessionId>.json
 // { role, milestone, goal, step, startedAt } (spec §4 "session marker").
-// Created from the pane's env (ORCH_ROLE, ORCH_IDS=M<n>[.G<k>[.S<j>]]) by
+// Created from the pane's env (ORCH_ROLE, ORCH_IDS=<M<n>|C<n>>[.G<k>[.S<j>]]) by
 // hooks/session-start.js, or lazily by the first guardrail that needs it;
 // updated by scripts/session-marker.js when a role's focus moves. Every
 // reader fails open: no marker = today's behaviour. ADVISORY state.
@@ -13,7 +13,7 @@ function markerPath(commonDir, sessionId) {
   return path.join(commonDir, 'orch', `session-${String(sessionId).replace(/[^\w.-]/g, '_')}.json`);
 }
 function parseIds(ids) {
-  const m = /^(M\d+)(?:\.(G\d+)(?:\.(S\d+))?)?$/.exec(String(ids || '').trim());
+  const m = /^([MC]\d+)(?:\.(G\d+)(?:\.(S\d+))?)?$/.exec(String(ids || '').trim());
   return m ? { milestone: m[1], goal: m[2] || null, step: m[3] || null } : { milestone: null, goal: null, step: null };
 }
 function readMarker(commonDir, sessionId) {

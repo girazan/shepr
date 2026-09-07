@@ -72,8 +72,24 @@ const inM = (g, n) => ({ ...g, milestone: { number: n, title: `M${n} · x` } });
     C.pick({ goals, named: 'G3', filesOf, scope: 'M54' }).pick === null);
   check('rule 6: a goal with no milestone is out of every scope',
     C.pick({ goals: [{ ...goal('G3', 'ready', 'hmi'), milestone: null }], filesOf, scope: 'M53' }).pick === null);
-  let threw = false; try { C.pick({ goals, filesOf, scope: '53' }); } catch (e) { threw = /scope must match M<n>/.test(e.message); }
+  let threw = false; try { C.pick({ goals, filesOf, scope: '53' }); } catch (e) { threw = /scope must match M<n> or C<n>/.test(e.message); }
   check('rule 6: a malformed scope throws rather than silently going board-wide', threw);
+}
+{
+  // A board that predates /shepr:milestone titles its milestones itself:
+  // "C1 SHU-HDS operable" IS GitHub milestone #49. Both spellings must land
+  // on it — M<n> by number, C<n> by title prefix.
+  const hand = (lane, num, title) => ({ ...goal(lane, 'ready', 'hmi'), milestone: { number: num, title } });
+  const goals = [hand('G3', 49, 'C1 SHU-HDS operable'), hand('G4', 50, 'C2 Authoring tools ready')];
+  check('C<n> resolves by title prefix', C.pick({ goals, filesOf, scope: 'C1' }).pick.lane === 'G3');
+  check('M<n> resolves by milestone number — same goal, other spelling', C.pick({ goals, filesOf, scope: 'M49' }).pick.lane === 'G3');
+  check('C2 is the other milestone, not a prefix collision with C1', C.pick({ goals, filesOf, scope: 'C2' }).pick.lane === 'G4');
+  check('C<n> does not match a longer number (C1 is not C10)',
+    C.pick({ goals: [hand('G3', 60, 'C10 later')], filesOf, scope: 'C1' }).pick === null);
+  check('C<n> against a shepr-titled board still works by number',
+    C.pick({ goals: [hand('G3', 53, 'M53 · objective')], filesOf, scope: 'M53' }).pick.lane === 'G3');
+  check('skip reason names the spelling the operator used',
+    C.pick({ goals, filesOf, scope: 'C2' }).skipped.some(x => x.lane === 'G3' && x.reason === 'rule 6: outside C2'));
 }
 {
   // THE reason scope narrows candidates only: M53's running lane must still

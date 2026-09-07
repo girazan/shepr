@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.6 — 2026-09-07
+
+### Added
+- A Coordinator's milestone scope accepts **`C<n>`** (the legacy title prefix) as well as `M<n>` (the GitHub milestone number), in `ORCH_IDS`, `--milestone` and `session-marker --ids`. On a board that predates `/shepr:milestone` the two disagree — "C1 SHU-HDS operable" is milestone #49, so `C1` and `M49` name the same milestone by two routes, and `C<n>` is the one a human actually says. `milestoneRank` already ranked `C<n>`; only the scope id did not resolve it. `C1` does not match `C10`.
+
 ## 0.9.5 — 2026-09-07
 
 ### Added
