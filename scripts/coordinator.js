@@ -12,6 +12,7 @@ const { execFileSync } = require('child_process');
 const { globToRe, RANKS } = require('../hooks/lib/contract');
 const { appendAudit, AUDIT_REL, loadConfig, resolveRepoKey } = require('../hooks/lib/config');
 const { withLock } = require('./lib/lockfile');
+const { readMarker } = require('../hooks/lib/session');
 
 // Evidence paths are never domain files (spec §5) — removed before any match.
 const EVIDENCE = ['docs/reviews/**', 'tmp/worklogs/**', 'docs/adr/**'];
@@ -30,9 +31,17 @@ function filesOfDomains(lsFiles, contract, domains) {
 
 // Spec §4 goal pick, rules 0–5. `goals` arrive in board order (plan 1's
 // Priority → milestone → issue sort) — rules 3–4 are that order, never re-sorted here.
-function pick({ goals, named, filesOf }) {
+// `scope` (M<n>, from the pane's ORCH_IDS — one Coordinator per milestone)
+// narrows the CANDIDATES only. `running` is still computed over EVERY goal:
+// rule 5's file-overlap check must see the other milestone's resident lanes,
+// or two Coordinators dispatch lanes that edit the same files.
+function pick({ goals, named, filesOf, scope }) {
   const skipped = [];
   const running = goals.filter(g => g.status === 'running').map(g => ({ lane: g.lane, files: new Set(filesOf(g)) }));
+  const sm = scope ? /^M(\d+)$/.exec(String(scope)) : null;
+  if (scope && !sm) throw new Error(`pick: scope must match M<n>, got ${scope}`);
+  const mNum = sm ? Number(sm[1]) : null;
+  const inScope = g => mNum === null || (g.milestone && g.milestone.number === mNum);
   const overlap = g => {
     const mine = filesOf(g);
     for (const r of running) { if (r.lane === g.lane) continue; const hit = mine.find(f => r.files.has(f)); if (hit) return `rule 5: shares ${hit} with ${r.lane}`; }
@@ -43,6 +52,7 @@ function pick({ goals, named, filesOf }) {
     if (g.status === 'blocked' || g.status === 'needs_attention') { skipped.push({ lane: g.lane, reason: `rule 0: ${g.status}` }); return false; }
     const o = overlap(g);
     if (o) { skipped.push({ lane: g.lane, reason: o }); return false; }
+    if (!inScope(g)) { skipped.push({ lane: g.lane, reason: `rule 6: outside ${scope}` }); return false; }
     return true;
   };
   if (named) {
@@ -84,8 +94,11 @@ function readAudit(root) {
   } catch { return []; }
 }
 // Stale = age of the last pulse (d.22). Minutes; null = never pulsed.
-function pulseAge(audit, now = Date.now()) {
-  const last = audit.filter(e => e.by === 'pulse').pop();
+// With one Coordinator per milestone the pulse stream is shared, so a scoped
+// tick reads only its own milestone's pulses — otherwise a live M2 keeps a
+// dead M1 Coordinator looking fresh forever.
+function pulseAge(audit, now = Date.now(), scope = null) {
+  const last = audit.filter(e => e.by === 'pulse' && (!scope || e.milestone === scope)).pop();
   return last ? Math.round((now - Date.parse(last.ts)) / 60000) : null;
 }
 
@@ -93,11 +106,13 @@ const roundOf = p => Number((/\.R(\d+)\.md$/.exec(p) || [0, 0])[1]);
 const verdictOf = text => (/^verdict:\s*(pass|fail|inconclusive)/m.exec(text || '') || [])[1] || null;
 
 // One tick, one action (spec §7 step 2). Pure: every source is an input.
-function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf }) {
+function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null }) {
   const filesOf = g => filesOfDomains(lsFiles, contract, domainsOf(g.brief));
-  const { pick: g, skipped } = pick({ goals, named, filesOf });
+  const { pick: g, skipped } = pick({ goals, named, filesOf, scope });
+  // Capacity is the FLEET's, not the Coordinator's: scoped Coordinators share
+  // one roster and race for the same slots; the loser reports wait-capacity.
   const cap = capacityCheck(roster, capacity);
-  const out = { pick: g ? g.lane : null, skipped, capacity: cap, stale: pulseAge(audit, now) };
+  const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, stale: pulseAge(audit, now, scope) };
   if (!g) return { action: 'idle', ...out };
   const sessions = audit.filter(e => e.by === 'pulse' && e.goal === g.lane && e.action === 'dispatch').length;
   out.kill = killCheck(g.brief, sessions);
@@ -258,6 +273,21 @@ function parseArgs(argv) {
 function sh(cwd, cmd, args) {
   return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
 }
+// The tick's milestone scope (one Coordinator per milestone): `--milestone
+// M<n>` wins, else the pane's own session marker (materialised from
+// ORCH_IDS by hooks/session-start.js). Unset — a plain unroled session —
+// stays board-wide, which is the single-Coordinator behaviour.
+function tickScope(opt, commonDir, env) {
+  const flag = typeof opt.milestone === 'string' ? opt.milestone.trim() : null;
+  if (flag) {
+    if (!/^M\d+$/.test(flag)) throw new Error(`--milestone must match M<n>, got ${flag}`);
+    return flag;
+  }
+  const sid = env.ORCH_SESSION_ID;
+  if (!commonDir || !sid) return null;
+  const marker = readMarker(commonDir, sid);
+  return (marker && marker.milestone) || null;
+}
 function readRoster(commonDir) { try { return JSON.parse(fs.readFileSync(path.join(commonDir, 'orch', 'fleet.json'), 'utf8')); } catch { return { delegates: [] }; } }
 function worklogPath(cwd, lane) {
   const dir = path.join(cwd, 'tmp', 'worklogs');
@@ -285,11 +315,18 @@ function main(argv, deps = {}) {
       let b;
       try { b = board(); } catch (e) { stdout(`coordinator: ${e.message}\n`); return 1; }
       const lsFiles = deps.lsFiles ? deps.lsFiles() : sh(cwd, 'git', ['ls-files']).split(/\r?\n/).filter(Boolean);
-      const t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-        capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now,
-        worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
-        manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
-      if (!opt['no-pulse']) appendAudit(cwd, { by: 'pulse', goal: t.pick, action: t.action, tick: new Date(now).toISOString(), ...(t.manifest ? { manifest: t.manifest.path } : {}) });
+      let scope;
+      try { scope = tickScope(opt, commonDir, deps.env || process.env); } catch (e) { stdout(`tick: ${e.message}
+`); return 1; }
+      let t;
+      try {
+        t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope,
+          worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
+          manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
+      } catch (e) { stdout(`tick: ${e.message}
+`); return 1; }
+      if (!opt['no-pulse']) appendAudit(cwd, { by: 'pulse', goal: t.pick, action: t.action, tick: new Date(now).toISOString(), ...(scope ? { milestone: scope } : {}), ...(t.manifest ? { manifest: t.manifest.path } : {}) });
       stdout(JSON.stringify(t, null, 2) + '\n');
       return 0;
     },
@@ -382,10 +419,10 @@ function main(argv, deps = {}) {
       return 0;
     },
   };
-  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
+  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, main, proposal, paneName, launch,
+module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope };

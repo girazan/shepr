@@ -21,7 +21,7 @@ by this document wherever they differ. The input artifact is in §A.
  DIRECTOR (you)        scope: milestone · goals · contract · ADRs · decide:human · stalls
      │  /orch:setup  /orch:milestone  /orch:goal          needed only where amber
      ▼
- COORDINATOR           native | loop (/loop 10m /orch:go) | herdr pane · one per repo
+ COORDINATOR           native | loop (/loop 10m /orch:go) | herdr pane · one per milestone
    reads board · latest handoff · latest review · the focus goal's worklog (append GATE)
    never code, never a verdict · one action per tick · pulse line · proposes goals, never creates
      │ starts panes with ORCH_ROLE=…  (a guardrail, not a credential — §6)
@@ -76,7 +76,7 @@ Examples: `M53.G142.S1.R2` (small goal = its one step, second round) ·
 | role | runs as | tier | owns | never (mechanism, label) |
 |---|---|---|---|---|
 | Director | you; attaches to a pane only when it blocks | — | milestones, goals, contract, ADR ratification, `decide: human` calls, stalls | route tasks, review code (INSTRUCTED) |
-| Coordinator | one per repo; `native` (today's session) · `loop` (`/loop <interval> /orch:go`) · `herdr` pane | frontier first; `mid` once one milestone ran clean (d.1) | pick one goal per tick, dispatch, gate bookkeeping, board status, pulse | read code (ADVISORY: direct `Read` outside its allowlist refused; `Bash` reads are not seen); design, implement, produce a verdict (INSTRUCTED) |
+| Coordinator | one per milestone (`ORCH_IDS=M<n>`; unscoped = the repo's only one); `native` (today's session) · `loop` (`/loop <interval> /orch:go`) · `herdr` pane | frontier first; `mid` once one milestone ran clean (d.1) | pick one goal per tick, dispatch, gate bookkeeping, board status, pulse | read code (ADVISORY: direct `Read` outside its allowlist refused; `Bash` reads are not seen); design, implement, produce a verdict (INSTRUCTED) |
 | Architect | pane per goal, `ORCH_ROLE=architect`, only when the goal is fuzzy or big | frontier | research, plan section (steps + fog), `recipe:` per step, ADRs, ≤5 questions | write dev-domain paths (ADVISORY, direct `Edit`/`Write` only) |
 | Dev | **fresh pane per step** (d.24), `ORCH_ROLE=dev`; resident across fix rounds 1–2 | `tiers.work` floor ∨ the route's tier, strictest wins | one step (or one small goal), its tests, its handoff, commits where `ship: commit` | change the BRIEF or the plan (INSTRUCTED; the BRIEF is an issue body only `board-gh` verbs mutate); write `docs/reviews/` (ADVISORY path rule + ENFORCED\* evidence lint, §5) |
 | Gate reviewer | subagent spawned by `orch review` **with an explicit child env** `ORCH_ROLE=reviewer` (a spawner sets its child's env; inheritance is the default, not a constraint — and still forgeable, hence ADVISORY); no pane; roster entry while it runs | `tiers.review`, never below `high`; second slot from `models.review-alt` — **dual requested with no `review-alt` configured → the script refuses**, it never silently runs single | the slot file(s), the round manifest and the rubric copies (the script commits them pathspec-limited to `docs/reviews/` — an evidence-only commit; **today's ship gate has no evidence-path grant** — it would block that commit — so plan 4 adds a built-in `commit` grant for `docs/reviews/**`, `tmp/worklogs/**`, `docs/adr/**`, r6) | fix what it finds, ship code (ADVISORY path rules; the ship gate refuses commit/push for the role — also ADVISORY, since it keys on the role) |

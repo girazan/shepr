@@ -60,6 +60,36 @@ const filesOf = g => C.filesOfDomains(LS, CONTRACT, C.domainsOf(g.brief));
   check('rule 5 compares files, not globs: overlapping globs with no common file do not collide', C.pick({ goals: ovl, named: 'G7', filesOf: g => g.lane === 'G7' ? ['docs/x.md'] : filesOf(g) }).pick.lane === 'G7');
 }
 
+// --- pick rule 6: milestone scope (one Coordinator per milestone) --------------------
+const inM = (g, n) => ({ ...g, milestone: { number: n, title: `M${n} · x` } });
+{
+  const goals = [inM(goal('G3', 'ready', 'hmi'), 53), inM(goal('G4', 'ready', 'numerics'), 54)];
+  check('no scope = board-wide, unchanged', C.pick({ goals, filesOf }).pick.lane === 'G3');
+  const r = C.pick({ goals, filesOf, scope: 'M54' });
+  check('rule 6: a scoped tick picks only its own milestone, and names the skip',
+    r.pick.lane === 'G4' && r.skipped.some(s => s.lane === 'G3' && s.reason === 'rule 6: outside M54'));
+  check('rule 6: a named goal outside the scope is refused',
+    C.pick({ goals, named: 'G3', filesOf, scope: 'M54' }).pick === null);
+  check('rule 6: a goal with no milestone is out of every scope',
+    C.pick({ goals: [{ ...goal('G3', 'ready', 'hmi'), milestone: null }], filesOf, scope: 'M53' }).pick === null);
+  let threw = false; try { C.pick({ goals, filesOf, scope: '53' }); } catch (e) { threw = /scope must match M<n>/.test(e.message); }
+  check('rule 6: a malformed scope throws rather than silently going board-wide', threw);
+}
+{
+  // THE reason scope narrows candidates only: M53's running lane must still
+  // block an overlapping M54 candidate, or two Coordinators collide on files.
+  const goals = [inM({ ...goal('G6', 'running', 'hmi'), items: [] }, 53), inM(goal('G7', 'ready', 'hmi, numerics'), 54)];
+  const r = C.pick({ goals, filesOf, scope: 'M54' });
+  check('rule 5 still sees a RUNNING goal in another milestone (cross-Coordinator file guard)',
+    r.pick === null && r.skipped.some(s => s.lane === 'G7' && s.reason === 'rule 5: shares src/Hmi.Web/a.cs with G6'));
+}
+{
+  const A = [{ by: 'pulse', ts: '2026-09-07T10:00:00Z', milestone: 'M53' }, { by: 'pulse', ts: '2026-09-07T11:00:00Z', milestone: 'M54' }];
+  const now = Date.parse('2026-09-07T11:30:00Z');
+  check('pulseAge scoped: a live M54 does not mask a stale M53', C.pulseAge(A, now, 'M53') === 90 && C.pulseAge(A, now, 'M54') === 30);
+  check('pulseAge unscoped is unchanged (last pulse wins)', C.pulseAge(A, now) === 30);
+}
+
 // --- kill / capacity / pulse -----------------------------------------------------
 check('killCheck: "<n> sessions" trips at n dispatches', C.killCheck('kill: 3 sessions', 3).tripped === true && C.killCheck('kill: 3 sessions', 2).tripped === false);
 check('killCheck: prose kill lines are returned, never tripped by code', C.killCheck('kill: when the metric stops moving', 99).tripped === false && C.killCheck('kill: when the metric stops moving', 99).line === 'when the metric stops moving');

@@ -25,6 +25,7 @@ judgment, verdict-only; suited cheap models execute.
    If `workflow.coordinator` (`.claude/orch.json`, one of `native | loop | herdr`) is `loop` or `herdr`, or this session's `ORCH_ROLE` is `coordinator`, this invocation is one Coordinator tick: load `coordinator.md` and stop after its one action.
 2. Focus — exactly one goal per session when several are open:
    `blocked`/`needs_attention` never → named goal → `running`/`review` first → Priority bucket across milestones → lower milestone → lower issue
+   (a pane carrying `ORCH_IDS=M<n>` picks only from M<n> — one Coordinator per milestone; the file-overlap rule below still spans every milestone)
    (`/shepr:go G142` names one). Never silently switch focus mid-session.
    Skip a candidate whose files (every domain in its `domains:`, by contract paths at HEAD) intersect a `running` goal's — two running goals never own a common file.
    A roled pane records the pick so the guardrails and the Stop rule know the focus goal: `node "<plugin>/scripts/session-marker.js" set --goal G<n>` (no-op message when `ORCH_SESSION_ID` is unset — a plain session has no marker).

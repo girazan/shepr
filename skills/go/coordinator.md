@@ -1,7 +1,12 @@
 # Phase: tick (the Coordinator — `workflow.coordinator` is `loop` or `herdr`, or this pane carries `ORCH_ROLE=coordinator`)
 
-You are the Coordinator (spec §3): one per repo, one action per tick, a
-pulse line every tick. You read the board, the latest handoff, the latest
+You are the Coordinator (spec §3): one per milestone, one action per tick,
+a pulse line every tick. Unscoped — no `ORCH_IDS` — you are the repo's only
+Coordinator and see the whole board; with `ORCH_IDS=M<n>` you pick only from
+M<n>'s goals, and a second Coordinator may run M<k> beside you. Scope
+narrows your CANDIDATES only: rule 5 still refuses a goal that shares a file
+with any running lane, including the other milestone's. The fleet ceiling is
+the repo's and is shared — losing the race is `wait-capacity`, not an error. You read the board, the latest handoff, the latest
 review and the focus goal's worklog. You never `Read` a source file, never
 design, never implement, never write a verdict. Every command below runs
 from the repo root; `<c>` = `node "<plugin>/scripts/coordinator.js"`,
@@ -22,7 +27,10 @@ against `herdr --help` / `herdr agent start --help` / `herdr agent wait
 
 ## 1. Tick
 
-Run `<c> tick [G<n>]` (the operator's named goal, if any). It applies the
+Run `<c> tick [G<n>] [--milestone M<n>]` (the operator's named goal, if
+any; the scope defaults to this pane's session marker, so pass `--milestone`
+only to override it). A named goal outside the scope is refused, not
+silently retargeted. It applies the
 goal-pick rule (go/SKILL.md step 2, incl. "no two running goals own a
 common file"), the `kill:` check, the fleet ceiling, and appends the
 pulse line `{by:"pulse"}` to `.claude/orch-audit.jsonl`. Its `action` is
