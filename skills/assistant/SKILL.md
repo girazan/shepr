@@ -4,8 +4,8 @@ description: >
   The assistant role: one tick of the owner-facing channel. Posts parked
   rulings to Telegram with a/b/c buttons, drains button presses into the
   owner queue, relays the four allowlisted phone commands, and writes a
-  short progress card (milestone bars + deltas) to Telegram and the
-  milestone issue. Run as `/loop 2h /shepr:assistant` in a pane with
+  short progress card (a bar per open milestone + deltas) to Telegram and
+  each milestone issue. Run as `/loop 2h /shepr:assistant` in a pane with
   ORCH_ROLE=assistant. Never rules, never edits code, never merges. Do NOT
   use to drive work (/shepr:go), to view the board (/shepr:board), or to
   edit the contract (/shepr:setup).
@@ -49,13 +49,19 @@ the file; `scripts/telegram.js` exits 78 with that hint otherwise).
    stalls and LIVENESS halts named in worklogs, autopilot start/stop
    (`.orch/autopilot.json`). One line each.
 5. The card, ≤ 25 lines, shaped for a phone: one bold headline
-   (`📊 <b>C1 · SHU-HDS operable</b> · Sat 18:50`), then sections with one
-   emoji each and one line per item — `🎯 bars` (value → value, ▲▼ delta),
-   `✅ merged`, `🧭 rulings open` (id, deadline), `⛔ blocked`, `🔥 needs you`.
-   Numbers only where they change what the operator does; no prose
-   paragraphs; HTML parse mode (`<b>`, `<code>`), never Markdown tables. Send via `telegram.js send` (or `digest
-   --file`), and once per day (or on `digest now`) also as a comment on the
-   milestone issue (`gh issue comment <milestone-issue> --body-file`).
+   (`📊 <b>Pertasim</b> · Sat 18:50`), then sections with one emoji each
+   and one line per item — `🎯 bars` **one line per open milestone**
+   (`C1 · 5/8 ▲1`, `C2 · 0/2`; value → value, ▲▼ delta), `✅ merged`,
+   `🧭 rulings open` (id, deadline), `⛔ blocked`, `🔥 needs you`. Prefix
+   every goal line with its milestone (`C2 G2245 …`) — with two campaigns
+   live an unlabelled lane is unreadable, and the operator's first question
+   is always "which one". A single open milestone: name it in the headline
+   instead and drop the prefixes. Numbers only where they change what the
+   operator does; no prose paragraphs; HTML parse mode (`<b>`, `<code>`),
+   never Markdown tables. Send via `telegram.js send` (or `digest --file`),
+   and once per day (or on `digest now`) also as a comment on EACH open
+   milestone's issue (`gh issue comment <milestone-issue> --body-file`),
+   filtered to that milestone's lines.
 6. Write `.orch/assistant-state.json`: `{ lastTick, lastSha, lastDigestDay }`.
 
 Cadence: `/loop 2h` while `.orch/autopilot.json` has no `stoppedAt`,

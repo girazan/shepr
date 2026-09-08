@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.7 — 2026-09-08
+
+### Fixed
+- The assistant's progress card assumed ONE milestone: a hardcoded `C1 · …` headline, one `🎯 bars` line, and a daily comment on "the milestone issue". With two campaigns live it picked one for the headline and the other's lanes landed unlabelled in the shared sections. The card now carries one bar per open milestone, prefixes every goal line with its milestone, and comments on each open milestone's issue filtered to its own lines. The assistant stays unscoped on purpose — it is the one phone channel, not one per campaign.
+
 ## 0.9.6 — 2026-09-07
 
 ### Added
