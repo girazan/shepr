@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1 — 2026-09-08
+
+### Added
+- Intake rule: `/shepr:goal` opens a goal on an existing issue only when it carries `ready-for-agent`; the five triage states are mattpocock/skills' (`needs-triage · needs-info · ready-for-agent · ready-for-human · wontfix`), and `workflow.tools.triage` may pin that skill. `coordinator sweep` reports how many open issues carry none of them — counted, never labelled by the script.
+
 ## 0.10.0 — 2026-09-08
 
 ### Added

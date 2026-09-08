@@ -289,13 +289,18 @@ function anchorTest(brief, anchorDomains = []) {
 }
 // Stale sweep (STRATEGY 5.5): PRs idle over idleDays close as parked; branches already
 // merged into the default branch are deleted. Unmerged branches are only ever listed.
-function sweepPlan({ prs = [], branches = [], merged = [], now = Date.now(), idleDays = 14, protect = [] }) {
+const TRIAGE_STATES = ['needs-triage', 'needs-info', 'ready-for-agent', 'ready-for-human', 'wontfix'];
+// An open issue with none of the five triage state labels is untriaged (intake rule; goals only open on ready-for-agent).
+function untriaged(issues = []) {
+  return issues.filter(i => !(i.labels || []).some(l => TRIAGE_STATES.includes(typeof l === 'string' ? l : l.name))).map(i => i.number);
+}
+function sweepPlan({ prs = [], branches = [], merged = [], issues = [], now = Date.now(), idleDays = 14, protect = [] }) {
   const cut = now - idleDays * 86400e3;
   const closePRs = prs.filter(p => new Date(p.updatedAt).getTime() < cut).map(p => ({ number: p.number, branch: p.headRefName, idleDays: Math.floor((now - new Date(p.updatedAt).getTime()) / 86400e3) }));
   const keep = new Set([...protect, ...prs.map(p => p.headRefName)]); // a branch with an open PR is never deleted
   const deleteBranches = merged.filter(b => branches.includes(b) && !keep.has(b) && /^(lane|goal)\//.test(b));
   const listOnly = branches.filter(b => /^(lane|goal)\//.test(b) && !merged.includes(b) && !keep.has(b));
-  return { closePRs, deleteBranches, listOnly };
+  return { closePRs, deleteBranches, listOnly, untriaged: untriaged(issues) };
 }
 
 // --- main -------------------------------------------------------------------------
@@ -449,19 +454,20 @@ function main(argv, deps = {}) {
     },
     sweep() {
       const idleDays = Number(opt['idle-days'] || (cfg.board && cfg.board.sweepIdleDays) || 14);
-      let prs = [], branches = [], merged = [], def = 'main';
+      let prs = [], branches = [], merged = [], issues = [], def = 'main';
       try {
         try { def = sh(cwd, 'git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim().split('/').pop() || 'main'; } catch { def = 'main'; }
         prs = deps.prs ? deps.prs() : JSON.parse(sh(cwd, 'gh', ['pr', 'list', '--state', 'open', '--limit', '100', '--json', 'number,updatedAt,headRefName,title']));
         branches = sh(cwd, 'git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']).split(/\r?\n/).filter(Boolean);
         merged = sh(cwd, 'git', ['branch', '--merged', def, '--format=%(refname:short)']).split(/\r?\n/).filter(Boolean);
+        issues = deps.issues ? deps.issues() : JSON.parse(sh(cwd, 'gh', ['issue', 'list', '--state', 'open', '--limit', '500', '--json', 'number,labels']));
       } catch (e) { stdout(`coordinator: sweep needs git + gh: ${e.message}\n`); return 1; }
-      const plan = sweepPlan({ prs, branches, merged, now, idleDays, protect: [def] });
+      const plan = sweepPlan({ prs, branches, merged, issues, now, idleDays, protect: [def] });
       if (opt.apply) {
         for (const p of plan.closePRs) sh(cwd, 'gh', ['pr', 'close', String(p.number), '--comment', `parked: idle ${p.idleDays} days (weekly sweep); reopen when its objective picks it up`]);
         for (const b of plan.deleteBranches) sh(cwd, 'git', ['branch', '-d', b]);
       }
-      const line = `sweep: ${opt.apply ? 'applied' : 'proposed'} · close ${plan.closePRs.length} PR(s) idle >${idleDays}d · delete ${plan.deleteBranches.length} merged branch(es) · ${plan.listOnly.length} unmerged lane branch(es) left for the Director`;
+      const line = `sweep: ${opt.apply ? 'applied' : 'proposed'} · close ${plan.closePRs.length} PR(s) idle >${idleDays}d · delete ${plan.deleteBranches.length} merged branch(es) · ${plan.listOnly.length} unmerged lane branch(es) left for the Director · ${plan.untriaged.length} open issue(s) without a triage state`;
       stdout(JSON.stringify({ line, ...plan }, null, 2) + '\n');
       appendAudit(cwd, { by: 'pulse', timestamp: new Date(now).toISOString(), action: 'sweep', applied: !!opt.apply, closePRs: plan.closePRs.map(p => p.number), deleteBranches: plan.deleteBranches });
       return 0;
@@ -494,4 +500,4 @@ function main(argv, deps = {}) {
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
-  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan };
+  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES };

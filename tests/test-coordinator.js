@@ -321,6 +321,8 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   check('sweepPlan: PRs idle over idleDays close, fresh stays, edge past cutoff closes', plan.closePRs.map(p => p.number).join() === '1,3' && plan.closePRs[0].idleDays === 30);
   check('sweepPlan: only merged lane/goal branches without an open PR are deleted', plan.deleteBranches.join() === 'lane/done');
   check('sweepPlan: unmerged lane branches without a PR are listed, never deleted', plan.listOnly.join() === 'lane/orphan,goal/G9-x');
+  const tri = C.sweepPlan({ now, issues: [{ number: 1, labels: [{ name: 'bug' }] }, { number: 2, labels: [{ name: 'ready-for-agent' }, { name: 'bug' }] }, { number: 3, labels: ['needs-info'] }, { number: 4, labels: [] }] });
+  check('sweepPlan: open issues carrying none of the five triage states are counted as untriaged', tri.untriaged.join() === '1,4' && C.TRIAGE_STATES.length === 5);
 
   const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo-anchor');
   fs.mkdirSync(path.join(CWD, 'tmp', 'worklogs'), { recursive: true }); fs.mkdirSync(path.join(CWD, '.claude'), { recursive: true });

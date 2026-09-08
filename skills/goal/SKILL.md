@@ -28,6 +28,10 @@ lands in this exact format at the top of the goal's worklog
 
 `metric:` on an anchored goal is written `<before> → <after>` — a predicted delta, not a direction. The coordinator's anchor test (go/coordinator.md §2) routes a goal without both to the `research` recipe first.
 
+## Intake first
+
+A goal that answers an existing issue opens only on an issue carrying `ready-for-agent` (the five triage states: `needs-triage · needs-info · ready-for-agent · ready-for-human · wontfix`). Any other state, or none: stop and say which — `ready-for-human` means the operator does it, `needs-triage` means run the triage tool pinned at `workflow.tools.triage` (or ask the three questions below) and label it before shaping. A goal from a fresh idea with no issue skips this; say so in the BRIEF.
+
 ## Shaping route (a recipe per shape; the skill per stage comes from `workflow.tools`)
 
 | Shape | Recipe |

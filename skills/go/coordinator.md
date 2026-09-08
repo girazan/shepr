@@ -58,7 +58,7 @@ this tick's one action; `skipped[]` names every goal passed over and why
 | `verdict` | §5 below |
 | `gate-rerun` | attention was cleared after an inconclusive → `node "<plugin>/scripts/shepr-review.js" G<k> --step S<j>` (next round `R<r+1>`, no Dev dispatch); stop |
 | `merge-gate` | §6 below |
-| `sweep` | once per 7 days (`board.sweepIdleDays`, default 14, is the idle cut): `<c> sweep` prints the plan; `<c> sweep --apply` closes PRs idle past the cut as parked and deletes lane branches already merged; unmerged lane branches are only listed for the Director. Report its one `sweep:` line |
+| `sweep` | once per 7 days (`board.sweepIdleDays`, default 14, is the idle cut): `<c> sweep` prints the plan; `<c> sweep --apply` closes PRs idle past the cut as parked and deletes lane branches already merged; unmerged lane branches are only listed for the Director; open issues without a triage state are counted, never labelled. Report its one `sweep:` line |
 
 A `kill:` line that is not `<n> sessions|ticks|rounds` is yours to judge:
 the tick returns it verbatim in `kill.line`; weigh it against the ledger
