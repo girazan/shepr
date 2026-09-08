@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // board-gh — GitHub Issues + Projects v2 ARE the shepr board (spec §4).
-// Milestone (operator's) → goal = Issue orch:goal → items = sub-issues.
-// Verbs: init · milestones · add-goal · add-item · move · set-status ·
+// Milestone (operator's) → objective = Issue orch:objective → goal = Issue orch:goal (sub-issue of its objective) → items = sub-issues.
+// Verbs: init · milestones · add-objective · add-goal · add-item · move · set-status ·
 // set-blocker · clear-blocker · attention · done · close-goal · read.
 'use strict';
 const fs = require('fs');
@@ -142,7 +142,7 @@ function main(argv, deps = {}) {
   const env = deps.env || process.env;
   const { pos, opt } = parseArgs(argv);
   const verb = pos[0];
-  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-goal|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-objective|add-goal [--objective O<n>]|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/shepr:board init` first.\n'); return 1; }

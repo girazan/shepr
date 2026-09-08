@@ -272,6 +272,32 @@ function gitLogFiles(cwd, base) { // [{sha, files}] for base..HEAD
   return commits;
 }
 
+// --- v0.10: anchor test + stale sweep (pure; the verbs below wire git/gh) -----------
+// Anchor test (STRATEGY 5.2): a lane in an anchored domain may iterate only when its
+// BRIEF names an anchor (PFD/OM value, conservation closure, textbook correlation) and
+// a predicted delta on `metric:`. Otherwise it researches first. One Ruling line either way.
+function anchorTest(brief, anchorDomains = []) {
+  const doms = domainsOf(brief);
+  const needed = doms.some(d => anchorDomains.includes(d));
+  if (!needed) return { needed, ok: true, ruling: `Ruling: anchor-test · n/a · domains ${doms.join(',') || '-'} are not anchored` };
+  const anchor = (/^anchor:\s*(.+)$/m.exec(brief) || [])[1];
+  const metric = (/^metric:\s*(.+)$/m.exec(brief) || [])[1] || '';
+  const delta = /(→|->|\bto\b|from\b)/.test(metric) && /\d/.test(metric);
+  if (anchor && anchor.trim() && delta) return { needed, ok: true, ruling: `Ruling: anchor-test · iterate · anchor "${anchor.trim()}" · predicted ${metric.trim()}` };
+  const why = !anchor || !anchor.trim() ? 'no anchor: line in the BRIEF' : 'metric: has no predicted delta (write "<before> → <after>")';
+  return { needed, ok: false, ruling: `Ruling: anchor-test · research-first · ${why}` };
+}
+// Stale sweep (STRATEGY 5.5): PRs idle over idleDays close as parked; branches already
+// merged into the default branch are deleted. Unmerged branches are only ever listed.
+function sweepPlan({ prs = [], branches = [], merged = [], now = Date.now(), idleDays = 14, protect = [] }) {
+  const cut = now - idleDays * 86400e3;
+  const closePRs = prs.filter(p => new Date(p.updatedAt).getTime() < cut).map(p => ({ number: p.number, branch: p.headRefName, idleDays: Math.floor((now - new Date(p.updatedAt).getTime()) / 86400e3) }));
+  const keep = new Set([...protect, ...prs.map(p => p.headRefName)]); // a branch with an open PR is never deleted
+  const deleteBranches = merged.filter(b => branches.includes(b) && !keep.has(b) && /^(lane|goal)\//.test(b));
+  const listOnly = branches.filter(b => /^(lane|goal)\//.test(b) && !merged.includes(b) && !keep.has(b));
+  return { closePRs, deleteBranches, listOnly };
+}
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -409,6 +435,37 @@ function main(argv, deps = {}) {
       stdout(`${path.relative(cwd, p).replace(/\\/g, '/')}\n`);
       return 0;
     },
+    anchor() {
+      const lane = (pos[1] || '').toUpperCase();
+      if (!/^G\d+$/.test(lane)) { stdout('usage: anchor G<n>  — prints (and appends to the worklog) the anchor-test Ruling line\n'); return 1; }
+      const wl = worklogPath(cwd, lane);
+      if (!wl) { stdout(`coordinator: no worklog for ${lane} under tmp/worklogs/\n`); return 1; }
+      const text = fs.readFileSync(wl, 'utf8');
+      const doms = (cfg.workflow && cfg.workflow.anchorTest && cfg.workflow.anchorTest.domains) || [];
+      const r = anchorTest(text, doms);
+      if (!/^Ruling: anchor-test/m.test(text)) fs.appendFileSync(wl, `${text.endsWith('\n') ? '' : '\n'}${r.ruling}\n`);
+      stdout(r.ruling + '\n');
+      return r.ok ? 0 : 2; // 2 = research first
+    },
+    sweep() {
+      const idleDays = Number(opt['idle-days'] || (cfg.board && cfg.board.sweepIdleDays) || 14);
+      let prs = [], branches = [], merged = [], def = 'main';
+      try {
+        try { def = sh(cwd, 'git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim().split('/').pop() || 'main'; } catch { def = 'main'; }
+        prs = deps.prs ? deps.prs() : JSON.parse(sh(cwd, 'gh', ['pr', 'list', '--state', 'open', '--limit', '100', '--json', 'number,updatedAt,headRefName,title']));
+        branches = sh(cwd, 'git', ['for-each-ref', '--format=%(refname:short)', 'refs/heads/']).split(/\r?\n/).filter(Boolean);
+        merged = sh(cwd, 'git', ['branch', '--merged', def, '--format=%(refname:short)']).split(/\r?\n/).filter(Boolean);
+      } catch (e) { stdout(`coordinator: sweep needs git + gh: ${e.message}\n`); return 1; }
+      const plan = sweepPlan({ prs, branches, merged, now, idleDays, protect: [def] });
+      if (opt.apply) {
+        for (const p of plan.closePRs) sh(cwd, 'gh', ['pr', 'close', String(p.number), '--comment', `parked: idle ${p.idleDays} days (weekly sweep); reopen when its objective picks it up`]);
+        for (const b of plan.deleteBranches) sh(cwd, 'git', ['branch', '-d', b]);
+      }
+      const line = `sweep: ${opt.apply ? 'applied' : 'proposed'} · close ${plan.closePRs.length} PR(s) idle >${idleDays}d · delete ${plan.deleteBranches.length} merged branch(es) · ${plan.listOnly.length} unmerged lane branch(es) left for the Director`;
+      stdout(JSON.stringify({ line, ...plan }, null, 2) + '\n');
+      appendAudit(cwd, { by: 'pulse', timestamp: new Date(now).toISOString(), action: 'sweep', applied: !!opt.apply, closePRs: plan.closePRs.map(p => p.number), deleteBranches: plan.deleteBranches });
+      return 0;
+    },
     fleet() {
       const roster = readRoster(commonDir);
       const audit = readAudit(cwd);
@@ -431,10 +488,10 @@ function main(argv, deps = {}) {
       return 0;
     },
   };
-  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet> …\n'); return 1; }
+  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet|anchor G<n>|sweep [--apply] [--idle-days N]> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
-  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope };
+  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan };

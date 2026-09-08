@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0 — 2026-09-08
+
+### Added
+- **Objectives.** A level between milestone and goal: `board-gh add-objective <milestone#> "<title>" --done "<observable>"` creates an `orch:objective` issue (Director-only, idempotent on milestone + title); `add-goal … --objective O<n>` makes the goal its sub-issue. Progress reported upward is objectives closed / total, never issue or goal counts — issue counts grow while work advances. `/shepr:milestone objectives` proposes them; nothing closes an objective but the Director demonstrating its `done:`.
+- **Anchor test.** `coordinator anchor G<k>` reads the BRIEF: a goal in `workflow.anchorTest.domains` needs an `anchor:` line (PFD/OM value, conservation closure, textbook correlation) and a predicted `<before> → <after>` on `metric:`; otherwise exit 2 and the first step runs the `research` recipe. One `Ruling: anchor-test · …` line is appended to the worklog either way, once. Born from a numerics goal that ran 23 rounds, 6 reverts and 44 rulings without an anchor.
+- **Pipeline from the domain.** `board.pipelineByDomain` (`{ "numerics": "Engine" }`) makes `add-goal` and `add-item` set the Project's Pipeline field from the goal's `feature:`; an explicit `--pipeline` still wins; no map → nothing set. Nobody fills Pipeline by hand any more.
+- **Sweep.** `coordinator sweep [--apply] [--idle-days N]` plans (or applies) the weekly hygiene pass: PRs idle past `board.sweepIdleDays` (default 14) close as parked with a comment; lane/goal branches already merged into the default branch are deleted; unmerged lane branches are listed and left to the Director. One audit line per run.
+
+### Changed
+- Vehicle by work type: herdr panes for long code lanes and Director-led design; in-session `Agent` for review, research, bisect, board sync. No new lane while a ruling is older than 24 h.
+- A goal makes exactly two worklog commits: `route:` at first pick and `docs(worklog): G<k> close` after the merge. Rounds append, never commit. Nothing writes `docs/BOARD*.md`.
+- Steps and items stay sub-issues (the tick's state machine) but are documented as the agent's bookkeeping, never progress.
+
 ## 0.9.7 — 2026-09-08
 
 ### Fixed

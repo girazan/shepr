@@ -13,6 +13,14 @@ design, never implement, never write a verdict. Every command below runs
 from the repo root; `<c>` = `node "<plugin>/scripts/coordinator.js"`,
 `<b>` = `node "<plugin>/scripts/board-gh.js"`.
 
+Vehicle by work type (v0.10): a herdr pane for anything long-running that
+the Director may want to watch or steer — a code lane (rounds, reviews,
+rulings) and design work the Director leads. An in-session `Agent` for the
+rest: review slots, research, bisect, board sync, retrospectives. No
+concurrency cap beyond the fleet ceiling; the real limit is ruling
+throughput — when `owner-queue.js tick` shows a ruling older than 24 h,
+open no new lane until it drains.
+
 Vehicles (`workflow.coordinator`): `native` is today's session (no tick;
 the driver's phases apply). `loop` runs one tick per invocation of
 `/loop <interval> /shepr:go` — a `confirm` question blocks the tick, which
@@ -50,6 +58,7 @@ this tick's one action; `skipped[]` names every goal passed over and why
 | `verdict` | §5 below |
 | `gate-rerun` | attention was cleared after an inconclusive → `node "<plugin>/scripts/shepr-review.js" G<k> --step S<j>` (next round `R<r+1>`, no Dev dispatch); stop |
 | `merge-gate` | §6 below |
+| `sweep` | once per 7 days (`board.sweepIdleDays`, default 14, is the idle cut): `<c> sweep` prints the plan; `<c> sweep --apply` closes PRs idle past the cut as parked and deletes lane branches already merged; unmerged lane branches are only listed for the Director. Report its one `sweep:` line |
 
 A `kill:` line that is not `<n> sessions|ticks|rounds` is yours to judge:
 the tick returns it verbatim in `kill.line`; weigh it against the ledger
@@ -61,7 +70,8 @@ Before any pane, Architect or Dev:
 1. `git rev-parse HEAD` → that sha is `base:`.
 2. Create the goal branch at it: `git switch -c goal/G<k>-<name> <base>` (`<name>` = the goal name slugged; `<c> pr-text` and the branch share the slug).
 3. Append the ROUTE line to `tmp/worklogs/G<k>-<name>.md` exactly as go/SKILL.md phase route states it (`base:` = that sha, `review:` from the contract, tier/decide/ship from the contract, `approved:auto` unless a domain is `decide: human` — then STOP and ask first).
-4. `git add tmp/worklogs/G<k>-<name>.md && git commit -m "route: G<k> · base <sha>"` — the evidence-path grant admits it; a block is the contract working.
+3b. Anchor test (v0.10, `workflow.anchorTest.domains`): `<c> anchor G<k>` reads the BRIEF and appends one `Ruling: anchor-test · …` line. Exit 0 → the steps keep their recipes. Exit 2 → the goal touches an anchored domain (numerics, physics) with no `anchor:` line or no predicted `<before> → <after>` on `metric:` — the first step runs the `research` recipe and must end by writing the `anchor:` line and the predicted delta into the BRIEF; only then does the coordinator dispatch the next step. An anchor is a PFD/operating-manual value, a conservation closure, or a textbook/vendor correlation — cited, never remembered.
+4. `git add tmp/worklogs/G<k>-<name>.md && git commit -m "route: G<k> · base <sha>"` — the evidence-path grant admits it; a block is the contract working. This and the close commit in §6 are the only two worklog commits a goal makes; rounds append to the file, they never commit it.
 5. Fuzzy or big goal (no plan section, more than one open step wanted) → launch the Architect pane the same way as §3 with `--role architect`, name `arch-G<k>`, brief = the BRIEF + "write the plan section; `add-item` per step with `--accept` and `--recipe`; ≤5 questions; end with `shepr review G<k> --plan`". Dispatch the first step only after a passing `P.R<r>`.
 
 Every pane of this goal works on this branch; steps are commits on it, never PRs of their own.
@@ -110,9 +120,11 @@ coordinator turns it into ONE queue entry — `node "<plugin>/scripts/owner-queu
 2. Push the goal branch under the contract's grant: `push` → `git push -u origin goal/G<k>-<name>`; `commit`-only or `none` → hand the Director the exact push command and stop this tick.
 3. `<c> pr-text G<k> > tmp/handoffs/G<k>-pr.md` → `gh pr create --base <default branch> --head goal/G<k>-<name> --title "G<k> · <name>" --body-file tmp/handoffs/G<k>-pr.md` (title `G<k> · <name>`, body = BRIEF + every passing manifest).
 4. **The Director merges** (owner-typed OWNER-APPROVED, as today; you never merge).
-5. After the merge: `<b> close-goal G<k> --evidence "<ledger line>"`, `git switch <default branch>`, `git branch -d goal/G<k>-<name>`, tear down every pane of the goal, roster cleared.
+5. After the merge: `<b> close-goal G<k> --evidence "<ledger line>"`, then the goal's one closing commit on the default branch — `git add tmp/worklogs/G<k>-<name>.md docs/reviews/M<n>.G<k>.* && git commit -m "docs(worklog): G<k> close"` — then `git switch <default branch>`, `git branch -d goal/G<k>-<name>`, tear down every pane of the goal, roster cleared. Board state lives on GitHub only; nothing under `docs/BOARD*.md` is written.
 
-## 7. Milestone (spec §7 step 8)
+## 7. Objective and milestone (spec §7 step 8)
+
+A goal that closes may complete its objective (`O<n>`, the goal issue's parent). You never close an objective: an objective closes when its `done:` line is demonstrated, not when its goals are merged. When the last open goal under an objective merges, put one line in the tick report: `objective O<n> · every goal merged · done: <its done line> — Director to demonstrate and close`.
 
 When every goal under `M<n>` is merged: judge one line against the milestone's `done:` and run `<c> milestone-summary M<n> --line "<that line>"` → `tmp/handoffs/M<n>-coordinator.md`. Tell the Director to run `/shepr:milestone close`; you never close it.
 

@@ -125,7 +125,8 @@ never silently disable a guard.
   "workflow": { "tools": { "research": "your-deep-research-tool" } },
   "models": { "frontier": "opus", "high": "opus", "mid": "sonnet", "low": "haiku" },
   "protectedDirs": ["acceptance"],
-  "board": { "staleDays": 3 },
+  "board": { "staleDays": 3, "sweepIdleDays": 14, "pipelineByDomain": { "numerics": "Engine", "web-ui": "Session" } },
+  "workflow": { "anchorTest": { "domains": ["numerics"] } },
   "readBeforeWrite": { "pathRegex": "(Solver|Kernel)", "facts": ["Every caller (grep, not memory).", "The red test.", "The reproduced number.", "Units."] },
   "sessionHygiene": { "trailPaths": ["tmp/worklogs"], "minEdits": 8 },
   "contextMonitor": { "window": 200000, "preAlarm": 0.40, "trip": 0.25 },
@@ -137,7 +138,7 @@ never silently disable a guard.
 
 ## 📖 Glossary
 
-**goal** one finite deliverable (`G<n>` issue), an orch:goal issue on the board · **milestone** GitHub's top-level Milestone: `M<n> · <objective>` with `target:` and `done:` in its description — created only by the Director via `/shepr:milestone`; legacy `C<n>` titles still sort · **feature** the Project's Feature options are the contract's domain names — the workstream a goal belongs to, never part of an id · **board** the status
+**objective** a boss-visible outcome under a milestone (`O<n>`, an orch:objective issue, body `done: <observable>`); goals are its sub-issues; progress = objectives closed / total · **anchor** the cited PFD/OM value, conservation closure or textbook correlation an anchored-domain goal measures against — no anchor, no iterating (`workflow.anchorTest`) · **sweep** the weekly coordinator pass that parks PRs idle past `board.sweepIdleDays` and deletes merged lane branches · **goal** one finite deliverable (`G<n>` issue), an orch:goal issue on the board · **milestone** GitHub's top-level Milestone: `M<n> · <objective>` with `target:` and `done:` in its description — created only by the Director via `/shepr:milestone`; legacy `C<n>` titles still sort · **feature** the Project's Feature options are the contract's domain names — the workstream a goal belongs to, never part of an id · **board** the status
 table, one row per goal (kanban, GitHub Issues + Projects v2) · **worklog** a goal's running notebook ·
 **ledger line** one-line summary of one work round · **review ladder**
 staged checking, cheap → expensive (quality gates) · **merge gate** the

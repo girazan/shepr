@@ -474,5 +474,30 @@ writeCfg(CFG);
   r = run(['add-goal', '49', 'nocontract', '--brief', BAD], gh);
   check('no contract → domains: not validated (nothing to validate against)', r.code === 0);
 }
+// --- v0.10: objectives + pipeline derived from the goal's domain --------------------
+{
+  fs.rmSync(JOURNAL, { force: true });
+  const { st, gh } = ghStore();
+  const lockCfg = { __repoLocked: false, board: { pipelineByDomain: { numerics: 'Engine' } } };
+  let r = run(['add-objective', '49', 'HDS stabilizer certifies', '--done', 'certify exit 0 twice'], gh, { lockCfg });
+  const on = Number(r.out.trim().replace(/^O/, ''));
+  check('add-objective: orch:objective issue in the milestone, prints O<n>, body carries done:', r.code === 0 && /^O\d+$/.test(r.out.trim()) && st.issues[on].milestone === 49 && st.issues[on].labels.some(l => l.name === 'orch:objective') && /^done: certify exit 0 twice/.test(st.issues[on].body));
+  check('add-objective on project with Status Todo', st.fields['PI_I_' + on + ':F_S'] === 's1');
+  r = run(['add-objective', '49', 'HDS stabilizer certifies', '--done', 'other'], gh, { lockCfg });
+  check('add-objective is idempotent on (milestone, title)', r.code === 0 && r.out.trim() === `O${on}` && Object.values(st.issues).filter(i => i.title === 'HDS stabilizer certifies').length === 1);
+  r = run(['add-objective', '49', 'x', '--done', 'y'], gh, { lockCfg, env: { ORCH_ROLE: 'dev' } });
+  check('add-objective is Director-only', r.code === 1 && /refused/.test(r.out));
+  r = run(['add-goal', '49', 'converge', '--brief', BRIEF, '--objective', `O${on}`], gh, { lockCfg });
+  const gn = Number(r.out.trim().replace(/^G/, ''));
+  check('add-goal --objective: goal is a sub-issue of the objective', r.code === 0 && st.parent[gn] === on);
+  check('add-goal: Pipeline derived from feature via board.pipelineByDomain', st.fields['PI_I_' + gn + ':F_P'] === 'p1');
+  r = run(['add-item', `G${gn}`, 'step one'], gh, { lockCfg });
+  const it = Number(r.out.trim());
+  check('add-item: Pipeline derived from the goal domain when --pipeline is omitted', st.fields['PI_I_' + it + ':F_P'] === 'p1');
+  r = run(['add-goal', '49', 'orphan', '--brief', BRIEF, '--objective', `G${gn}`], gh, { lockCfg });
+  check('add-goal --objective refuses a non-objective issue', r.code === 1 && /not an orch:objective/.test(r.out));
+  r = run(['add-goal', '49', 'nomap', '--brief', BRIEF], gh);
+  check('no pipelineByDomain → Pipeline left unset (no guess)', r.code === 0 && st.fields['PI_I_' + Number(r.out.trim().replace(/^G/, '')) + ':F_P'] === undefined);
+}
 module.exports = { check, run, fakeGh, writeCfg, CFG, CWD, COMMON, SCRATCH, finish() { console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0); } };
 if (require.main === module) module.exports.finish();

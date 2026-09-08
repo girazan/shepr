@@ -301,5 +301,38 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   check('main fleet: lines, pulse age/stale, out-of-scope per running goal from its ROUTE base:', c === 0 && j.fleet.length === 3 && typeof j.pulse.age === 'number' && j.pulse.stale === (j.pulse.age > 30) && JSON.stringify(j.outOfScope) === '{"G6":[{"sha":"bbb2222","files":["src/Core/calc.cs"]}]}');
 }
 
+// --- v0.10: anchor test + sweep plan ---------------------------------------------------
+{
+  const B = (extra = '') => `BRIEF\ngoal: g\nmetric: FIC-0008 384 → 400 m3/h\ndone: d\ndomains: numerics\nfeature: numerics\nkill: 3 sessions\n${extra}`;
+  let r = C.anchorTest(B(), ['numerics']);
+  check('anchorTest: anchored domain without anchor: → research-first', r.needed && !r.ok && /research-first/.test(r.ruling) && /no anchor/.test(r.ruling));
+  r = C.anchorTest(B('anchor: PFD sheet 3 feed 400 m3/h\n'), ['numerics']);
+  check('anchorTest: anchor + predicted delta → iterate', r.ok && /iterate/.test(r.ruling) && /PFD sheet 3/.test(r.ruling));
+  r = C.anchorTest('BRIEF\nmetric: faster\ndomains: numerics\nanchor: OM 3.2\n', ['numerics']);
+  check('anchorTest: anchor but no predicted delta → research-first', !r.ok && /no predicted delta/.test(r.ruling));
+  r = C.anchorTest(B(), ['plant-data']);
+  check('anchorTest: domain not anchored → n/a, ok', !r.needed && r.ok && /n\/a/.test(r.ruling));
+
+  const now = Date.parse('2026-09-08T00:00:00Z'); const d = n => new Date(now - n * 86400e3).toISOString();
+  const plan = C.sweepPlan({ now, idleDays: 14,
+    prs: [{ number: 1, updatedAt: d(30), headRefName: 'lane/old' }, { number: 2, updatedAt: d(3), headRefName: 'lane/fresh' }, { number: 3, updatedAt: d(14.5), headRefName: 'lane/edge' }],
+    branches: ['main', 'lane/old', 'lane/fresh', 'lane/edge', 'lane/done', 'lane/orphan', 'goal/G9-x', 'feature/other'],
+    merged: ['main', 'lane/done', 'lane/fresh', 'feature/other'], protect: ['main'] });
+  check('sweepPlan: PRs idle over idleDays close, fresh stays, edge past cutoff closes', plan.closePRs.map(p => p.number).join() === '1,3' && plan.closePRs[0].idleDays === 30);
+  check('sweepPlan: only merged lane/goal branches without an open PR are deleted', plan.deleteBranches.join() === 'lane/done');
+  check('sweepPlan: unmerged lane branches without a PR are listed, never deleted', plan.listOnly.join() === 'lane/orphan,goal/G9-x');
+
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo-anchor');
+  fs.mkdirSync(path.join(CWD, 'tmp', 'worklogs'), { recursive: true }); fs.mkdirSync(path.join(CWD, '.claude'), { recursive: true });
+  const WL = path.join(CWD, 'tmp', 'worklogs', 'G7-conv.md'); fs.writeFileSync(WL, B());
+  const cfg = { contract: CONTRACT, workflow: { anchorTest: { domains: ['numerics'] } } };
+  let out = ''; let code = C.main(['anchor', 'G7'], { cwd: CWD, commonDir: path.join(CWD, '.git'), config: cfg, stdout: s => { out += s; } });
+  check('main anchor: exit 2 + Ruling line printed and appended once to the worklog', code === 2 && /research-first/.test(out) && (fs.readFileSync(WL, 'utf8').match(/Ruling: anchor-test/g) || []).length === 1);
+  out = ''; code = C.main(['anchor', 'G7'], { cwd: CWD, commonDir: path.join(CWD, '.git'), config: cfg, stdout: s => { out += s; } });
+  check('main anchor: a second run does not append a second Ruling line', (fs.readFileSync(WL, 'utf8').match(/Ruling: anchor-test/g) || []).length === 1);
+  out = ''; code = C.main(['anchor', 'G8'], { cwd: CWD, commonDir: path.join(CWD, '.git'), config: cfg, stdout: s => { out += s; } });
+  check('main anchor: unknown goal → exit 1', code === 1 && /no worklog/.test(out));
+}
+
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

@@ -23,6 +23,13 @@ metric, kill line or review; those belong to goals:
 
 Any number of milestones may be open at once; each goal attaches to one.
 
+Under a milestone sit **objectives** (v0.10): boss-visible, demonstrable
+outcomes, 5–8 per milestone, each an `orch:objective` issue whose body is
+`done: <observable>`. Goals are an objective's sub-issues. Progress that
+anyone reports upward is **objectives closed / objectives total** — never
+issue counts, never goal counts. An objective closes when its `done:` is
+demonstrated, which the Director does by hand; no script closes one.
+
 ## define
 
 Three questions, one at a time (stage `define-milestone`: `node "<plugin>/scripts/tools.js" check` names the skill — `grilling` when pinned — else ask plainly):
@@ -34,12 +41,23 @@ Three questions, one at a time (stage `define-milestone`: `node "<plugin>/script
 Then `add-milestone "<objective>" --target <YYYY-MM-DD> --done "<observable>"`.
 It prints `M<n>` — `n` is the GitHub milestone number and the title becomes `M<n> · <objective>`; idempotent on the objective.
 
+## objectives
+
+Read the milestone's `done:`. Propose 5–8 objectives that, together,
+demonstrate it — one line each, with the observable that closes it.
+Create NOTHING until the Director accepts; then, per accepted line,
+`add-objective <milestone#> "<title>" --done "<observable>"` prints
+`O<n>`. Idempotent on (milestone, title). Existing open issues that
+already are objectives in spirit are attached, not duplicated: label them
+`orch:objective` by hand and say so.
+
 ## split
 
-Read the milestone and the Project's Feature options (they are the
-contract's domain names). Propose ordered candidate goals — one line
-each, a rough size (small / big), the Feature each belongs to. Create
-NOTHING. For each goal the Director accepts, hand to `/shepr:goal`.
+Read one objective (or the milestone when it has none yet) and the
+Project's Feature options (they are the contract's domain names). Propose
+ordered candidate goals — one line each, a rough size (small / big), the
+Feature each belongs to, the objective each serves. Create NOTHING. For
+each goal the Director accepts, hand to `/shepr:goal` with `--objective O<n>`.
 
 ## prioritize
 
