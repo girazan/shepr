@@ -278,8 +278,11 @@ function gitLogFiles(cwd, base) { // [{sha, files}] for base..HEAD
 // a predicted delta on `metric:`. Otherwise it researches first. One Ruling line either way.
 function anchorTest(brief, anchorDomains = []) {
   const doms = domainsOf(brief);
+  // Fail closed: a BRIEF with no domains: line cannot be classified, so it is treated as anchored (a guard must never
+  // silently switch itself off). Found on G2100, whose BRIEF predates the domains: line.
+  if (!doms.length && anchorDomains.length) return { needed: true, ok: false, ruling: 'Ruling: anchor-test · research-first · BRIEF has no domains: line — add it (contract domain names), then re-run' };
   const needed = doms.some(d => anchorDomains.includes(d));
-  if (!needed) return { needed, ok: true, ruling: `Ruling: anchor-test · n/a · domains ${doms.join(',') || '-'} are not anchored` };
+  if (!needed) return { needed, ok: true, ruling: `Ruling: anchor-test · n/a · domains ${doms.join(',')} are not anchored` };
   const anchor = (/^anchor:\s*(.+)$/m.exec(brief) || [])[1];
   const metric = (/^metric:\s*(.+)$/m.exec(brief) || [])[1] || '';
   const delta = /(→|->|\bto\b|from\b)/.test(metric) && /\d/.test(metric);

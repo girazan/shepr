@@ -312,6 +312,10 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   check('anchorTest: anchor but no predicted delta → research-first', !r.ok && /no predicted delta/.test(r.ruling));
   r = C.anchorTest(B(), ['plant-data']);
   check('anchorTest: domain not anchored → n/a, ok', !r.needed && r.ok && /n\/a/.test(r.ruling));
+  r = C.anchorTest('BRIEF\ngoal: g\nmetric: 1 → 2\nanchor: OM 3.2\n', ['numerics']);
+  check('anchorTest: no domains: line fails closed → research-first, names the fix', r.needed && !r.ok && /no domains: line/.test(r.ruling));
+  r = C.anchorTest('BRIEF\ngoal: g\n', []);
+  check('anchorTest: no anchored domains configured → n/a, ok even without domains:', !r.needed && r.ok);
 
   const now = Date.parse('2026-09-08T00:00:00Z'); const d = n => new Date(now - n * 86400e3).toISOString();
   const plan = C.sweepPlan({ now, idleDays: 14,

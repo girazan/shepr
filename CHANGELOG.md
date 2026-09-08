@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 — 2026-09-08
+
+### Fixed
+- The anchor test fails closed: a BRIEF with no `domains:` line is treated as anchored (research-first, ruling names the fix) instead of `n/a`. A guard that switches itself off on missing input is not a guard. Found by the pertasim Coordinator on G2100, whose BRIEF predates `domains:`.
+
 ## 0.10.1 — 2026-09-08
 
 ### Added
