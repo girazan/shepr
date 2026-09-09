@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.2 — 2026-09-09
+
+### Changed
+- **`/shepr:go` is a 1 KB router.** Its 11 KB body (board, contract, route, ship, records) moved to `go/native.md`, loaded only when the pane is not a Coordinator tick. A coordinator session now loads `SKILL.md` + `coordinator.md` (16 KB) instead of 26 KB; `coordinator.md` restates the ROUTE line verbatim (pinned by the grammar test) so it never needs `native.md`. Measured on a restarted coordinator pane: ~115 KB of context before the first board read, of which this was the only shepr-owned piece.
+
 ## 0.11.1 — 2026-09-09
 
 The assistant pane retires. After 0.11.0 the ruling round-trip was already script-only (poller → owner queue → coordinator wake); what the pane still did — send the digest, relay four phone texts, restart the poller — is now the coordinator's `wait` and the poller itself. One fewer model in the loop, and the pane that spawned the duplicate poller is gone.

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const R = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
-const go = R('skills/go/SKILL.md');
+const go = R('skills/go/SKILL.md') + R('skills/go/native.md'); // router + the interactive body
 const goal = R('skills/goal/SKILL.md');
 const board = R('skills/board/SKILL.md');
 const work = R('skills/go/work.md');
@@ -28,6 +28,8 @@ function check(name, cond) {
 const ROUTE = 'ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · base:<sha> · review:<single|dual> · approved:<operator|auto> · <date>';
 check('go states the full ROUTE line grammar', go.includes(ROUTE));
 check('no other skill restates the ROUTE line', ![goal, board, work, loop].some(t => t.includes('ROUTE: lane:')));
+check('coordinator restates the ROUTE line verbatim (it never loads native.md)', coord.includes(ROUTE));
+check('the router is small: SKILL.md loads coordinator.md OR native.md and nothing else', R('skills/go/SKILL.md').length < 2500 && R('skills/go/SKILL.md').includes('load `native.md`'));
 
 // 2. Board item grammar — goal writes it via board-gh.js verbs, board reads
 // the board-gh.js JSON, renderer parses that JSON (via board-html.js --json).

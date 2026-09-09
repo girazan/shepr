@@ -40,7 +40,7 @@ Run `<c> tick [G<n>] [--milestone M<n>]` (the operator's named goal, if
 any; the scope defaults to this pane's session marker, so pass `--milestone`
 only to override it). A named goal outside the scope is refused, not
 silently retargeted. It applies the
-goal-pick rule (go/SKILL.md step 2, incl. "no two running goals own a
+goal-pick rule (go/native.md step 2, incl. "no two running goals own a
 common file"), the `kill:` check, the fleet ceiling, and appends the
 pulse line `{by:"pulse"}` to `.claude/orch-audit.jsonl`. Its `action` is
 this tick's one action; `skipped[]` names every goal passed over and why
@@ -69,7 +69,9 @@ before dispatching.
 Before any pane, Architect or Dev:
 1. `git rev-parse HEAD` → that sha is `base:`.
 2. Create the goal branch at it: `git switch -c goal/G<k>-<name> <base>` (`<name>` = the goal name slugged; `<c> pr-text` and the branch share the slug).
-3. Append the ROUTE line to `tmp/worklogs/G<k>-<name>.md` exactly as go/SKILL.md phase route states it (`base:` = that sha, `review:` from the contract, tier/decide/ship from the contract, `approved:auto` unless a domain is `decide: human` — then STOP and ask first).
+3. Append the ROUTE line to `tmp/worklogs/G<k>-<name>.md`, exactly
+   `ROUTE: lane:G<n> · <domain> · decide:<ai|human> · ship:<none|commit|push> · tier:<model-tier> · base:<sha> · review:<single|dual> · approved:<operator|auto> · <date>`
+   (`base:` = that sha, `review:` from the contract, tier/decide/ship from the contract, `approved:auto` unless a domain is `decide: human` — then STOP and ask first).
 3b. Anchor test (v0.10, `workflow.anchorTest.domains`): `<c> anchor G<k>` reads the BRIEF and appends one `Ruling: anchor-test · …` line. Exit 0 → the steps keep their recipes. Exit 2 → the goal touches an anchored domain (numerics, physics) with no `anchor:` line or no predicted `<before> → <after>` on `metric:` — the first step runs the `research` recipe and must end by writing the `anchor:` line and the predicted delta into the BRIEF; only then does the coordinator dispatch the next step. An anchor is a PFD/operating-manual value, a conservation closure, or a textbook/vendor correlation — cited, never remembered.
 4. `git add tmp/worklogs/G<k>-<name>.md && git commit -m "route: G<k> · base <sha>"` — the evidence-path grant admits it; a block is the contract working. This and the close commit in §6 are the only two worklog commits a goal makes; rounds append to the file, they never commit it.
 5. Fuzzy or big goal (no plan section, more than one open step wanted) → launch the Architect pane the same way as §3 with `--role architect`, name `arch-G<k>`, brief = the BRIEF + "write the plan section; `add-item` per step with `--accept` and `--recipe`; ≤5 questions; end with `shepr review G<k> --plan`". Dispatch the first step only after a passing `P.R<r>`.
@@ -116,7 +118,7 @@ coordinator turns it into ONE queue entry — `node "<plugin>/scripts/owner-queu
 
 ## 6. Merge gate and PR — once per goal (spec §7 step 7)
 
-1. The three legs of go/SKILL.md phase ship (full suite verdict line · metric beats its noise band · root cause) → GATE block in the worklog: `GATE · subject:<last passing manifest's head-sha> · regression:<line> · metric:<before → after> · rootcause:<one line>`; commit it with the worklog (evidence path).
+1. The three merge legs (go/native.md phase ship: full suite verdict line · metric beats its noise band · root cause) → GATE block in the worklog: `GATE · subject:<last passing manifest's head-sha> · regression:<line> · metric:<before → after> · rootcause:<one line>`; commit it with the worklog (evidence path).
 2. Push the goal branch under the contract's grant: `push` → `git push -u origin goal/G<k>-<name>`; `commit`-only or `none` → hand the Director the exact push command and stop this tick.
 3. `<c> pr-text G<k> > tmp/handoffs/G<k>-pr.md` → `gh pr create --base <default branch> --head goal/G<k>-<name> --title "G<k> · <name>" --body-file tmp/handoffs/G<k>-pr.md` (title `G<k> · <name>`, body = BRIEF + every passing manifest).
 4. **The Director merges** (owner-typed OWNER-APPROVED, as today; you never merge).
