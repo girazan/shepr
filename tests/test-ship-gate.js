@@ -302,6 +302,11 @@ check('git worktree remove ../escape -> 2', run(`git worktree remove "${path.joi
   const leaseRc = runAt('git push --force-with-lease origin lane/r', WTR);
   check(`laneRebase: push --force-with-lease of the lane branch -> 0 (ship-gate)${leaseRc === 0 ? '' : ' :: ' + runAt.err.trim().slice(0, 200)}`, leaseRc === 0);
   check('laneRebase: push --force (bare) -> 2', runAt('git push --force origin lane/r', WTR) === 2);
+  // Rewritten history: main gained an UNMATCHED file; the rebased lane must be gated on what it adds, not on main's gain.
+  writeFile('unmatched-dir/m.txt'); g('add', 'unmatched-dir/m.txt'); g('commit', '-q', '-m', 'main gains an unmatched file'); g('push', '-q');
+  gw('fetch', '-q', 'origin'); gw('rebase', '-q', 'origin/main');
+  const leaseRc2 = runAt('git push --force-with-lease origin lane/r', WTR);
+  check(`laneRebase: lease push after rebase over main's unmatched file -> 0 (gated on the branch's own files)${leaseRc2 === 0 ? '' : ' :: ' + runAt.err.trim().slice(0, 160)}`, leaseRc2 === 0);
   check('laneRebase: push --force-with-lease of another branch -> 2', runAt('git push --force-with-lease origin main', WTR) === 2);
   check('laneRebase: push --force-with-lease from the main checkout -> 2', runAt('git push --force-with-lease', REPO) === 2);
   g('worktree', 'remove', '--force', WTR);

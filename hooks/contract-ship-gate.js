@@ -391,6 +391,19 @@ try {
       } catch {}
     }
     if (!base) die("push base unresolvable — no upstream and refs/remotes/origin/HEAD is not set locally; the operator runs `git remote set-head origin -a` once (a gate never talks to the remote).");
+    // v0.9.4: a rebased branch's diff against its OLD upstream contains everything
+    // the default branch gained meanwhile — files this push does not author. When
+    // the upstream is not an ancestor of HEAD (i.e. history was rewritten), gate
+    // what the branch adds over the default branch instead: merge-base(HEAD, origin/HEAD).
+    try {
+      git(root, ['merge-base', '--is-ancestor', base, 'HEAD']);
+    } catch {
+      try {
+        const def = git(root, ['symbolic-ref', 'refs/remotes/origin/HEAD']).trim();
+        const mb = git(root, ['merge-base', 'HEAD', def]).trim();
+        if (mb) base = mb;
+      } catch {}
+    }
     files.push(...names(git(root, ['diff', `${base}..HEAD`, '--name-only'])));
   }
 } catch (e) {
