@@ -3,7 +3,7 @@
 ## 0.12.2 — 2026-09-09
 
 ### Changed
-- **The autopilot gate no longer hardcodes a Codex leg.**  step 3 said "three legs + Codex on numerics" unconditionally, so a project with no  was told to spawn a reviewer its contract never names. The second-family review is now conditional on  being configured, and the squash-title suffix names whichever reviewer actually ran.
+- **The autopilot gate no longer hardcodes a Codex leg.** `/shepr:auto` step 3 said "three legs + Codex on numerics" unconditionally, so a project with no `models.review-alt` was told to spawn a reviewer its contract never names. The second-family review is now conditional on `review-alt` being configured, and the squash-title suffix names whichever reviewer actually ran.
 
 ## 0.12.1 — 2026-09-09
 
