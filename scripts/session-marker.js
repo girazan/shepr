@@ -7,8 +7,8 @@
 const { resolveRepoKey } = require('../hooks/lib/config');
 const { readMarker, writeMarker, parseIds } = require('../hooks/lib/session');
 
-const USAGE = 'usage: session-marker <set|show> [--role <role>] [--ids <M<n>|C<n>>[.G<k>[.S<j>]]] [--milestone <M<n>|C<n>>] [--goal G<k>] [--step S<j>] [--session <id>]\n';
-const SHAPE = { milestone: /^[MC]\d+$/, goal: /^G\d+$/, step: /^S\d+$/ };
+const USAGE = 'usage: session-marker <set|show> [--role <role>] [--ids M<n>[.G<k>[.S<j>]]] [--milestone <M<n>|C<n>>] [--goal G<k>] [--step S<j>] [--session <id>]\n';
+const SHAPE = { milestone: /^M\d+$/, goal: /^G\d+$/, step: /^S\d+$/ };
 
 function main(argv, deps = {}) {
   const env = deps.env || process.env;
@@ -30,7 +30,7 @@ function main(argv, deps = {}) {
   marker = marker || { role: env.ORCH_ROLE || null, milestone: null, goal: null, step: null, startedAt: new Date().toISOString() };
   if (typeof opt.ids === 'string') {
     const ids = parseIds(opt.ids);
-    if (!ids.milestone) { out('session-marker: --ids must match <M<n>|C<n>>[.G<k>[.S<j>]]\n'); return 1; }
+    if (!ids.milestone) { out('session-marker: --ids must match M<n>[.G<k>[.S<j>]]\n'); return 1; }
     Object.assign(marker, ids);
   }
   for (const k of ['role', 'milestone', 'goal', 'step']) if (typeof opt[k] === 'string') marker[k] = opt[k];

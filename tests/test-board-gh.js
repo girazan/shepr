@@ -45,15 +45,15 @@ writeCfg(CFG);
 {
   const gh = fakeGh([[/GET repos\/o\/r\/milestones\?state=open/, () => [
     { number: 52, title: 'backlog', open_issues: 4, closed_issues: 25 },
-    { number: 50, title: 'C2 Authoring tools ready', open_issues: 8, closed_issues: 2 },
+    { number: 50, title: 'M2 · Authoring tools ready', open_issues: 8, closed_issues: 2 },
     { number: 55, title: 'M3 · October target', open_issues: 1, closed_issues: 0 },
-    { number: 49, title: 'C1 SHU-HDS operable', open_issues: 60, closed_issues: 9 },
+    { number: 49, title: 'M1 · SHU-HDS operable', open_issues: 60, closed_issues: 9 },
     { number: 30, title: 'v0.9.1', open_issues: 0, closed_issues: 7 } ]]]);
   const j = JSON.parse(run(['milestones'], gh).out);
-  check('milestones: M<n>/C<n> numeric first, then backlog, then rest', j.map(c => c.number).join() === '49,50,55,52,30' && j[0].open === 60);
+  check('milestones: M<n> by ordinal first, then backlog, then rest', j.map(c => c.number).join() === '49,50,55,52,30' && j[0].open === 60);
   const { milestoneRank } = require('../scripts/board-gh');
-  check('milestoneRank: M3 → 3, C2 → 2, backlog → 1e6, other → 1e7',
-    milestoneRank('M3 · October target') === 3 && milestoneRank('C2 Authoring') === 2 && milestoneRank('backlog') === 1e6 && milestoneRank('v0.9.1') === 1e7);
+  check('milestoneRank: M3 → 3, the retired C2 no longer ranks, backlog → 1e6, other → 1e7',
+    milestoneRank('M3 · October target') === 3 && milestoneRank('C2 Authoring') === 1e7 && milestoneRank('backlog') === 1e6 && milestoneRank('v0.9.1') === 1e7);
 }
 
 // --- read folds goal status -----------------------------------------------------
@@ -287,17 +287,13 @@ writeCfg(CFG);
   const { st, gh } = ghStore();
   let r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'operator runs a shift on HMI alone'], gh);
   const m = st.milestones.find(x => /Ship the HMI$/.test(x.title));
-  check('add-milestone creates then retitles to M<github#> · objective, prints M<github#>', r.code === 0 && m && m.number === 53 && m.title === 'M53 · Ship the HMI' && r.out.trim() === 'M53');
+  check('add-milestone titles with the PROGRAM ORDINAL, not the GitHub number (#53 → M1)', r.code === 0 && m && m.number === 53 && m.title === 'M1 · Ship the HMI' && r.out.trim() === 'M1');
   check('add-milestone description/due_on follow the grammar', m.description === 'target: 2026-10-31 · done: operator runs a shift on HMI alone' && m.due_on === '2026-10-31T00:00:00Z');
   const before = st.milestones.length;
   r = run(['add-milestone', 'Ship the HMI', '--target', '2026-10-31', '--done', 'x'], gh);
-  check('add-milestone is idempotent on the objective', r.code === 0 && st.milestones.length === before && /exists: #53/.test(r.out));
+  check('add-milestone is idempotent on the statement', r.code === 0 && st.milestones.length === before && /exists: #53/.test(r.out));
   r = run(['add-milestone', 'SHU-HDS operable', '--target', '2026-10-31', '--done', 'x'], gh);
-  check('a legacy C1 title does not count as the same objective', r.code === 0 && st.milestones.length === before + 1);
-  st.milestones.push({ number: 70, title: 'M9 · Wrong ordinal', description: '', state: 'open', open_issues: 0, closed_issues: 0 });
-  r = run(['add-milestone', 'Wrong ordinal', '--target', '2026-10-31', '--done', 'x'], gh);
-  check('a malformed M<k> title (k ≠ number) is refused, not adopted', r.code === 1 && /malformed/.test(r.out) && !st.milestones.some(m => m.title === 'M70 · Wrong ordinal'));
-  st.milestones.pop();
+  check('the next milestone takes the next ordinal, whatever GitHub numbers it', r.code === 0 && st.milestones.length === before + 1 && st.milestones.at(-1).title === 'M2 · SHU-HDS operable');
   r = run(['add-milestone', 'Anything', '--target', '2026-99-99', '--done', 'x'], gh);
   check('add-milestone rejects an impossible date', r.code === 1 && /YYYY-MM-DD/.test(r.out));
   r = run(['add-milestone', 'Anything', '--target', '2026-10-31'], gh);
@@ -329,7 +325,7 @@ writeCfg(CFG);
   check('close-goal refuses a goal with no step', r.code === 1 && /no step/.test(r.out) && st.issues[142].state === 'open');
   run(['done', '--goal', 'G140', '--step', 'S1', String(s1)], gh);
   run(['close-goal', 'G140', '--evidence', 'iter 1 · G140 · done'], gh);
-  r = run(['close-milestone', 'M53 · Ship the HMI', '--summary', 'shift ran alone'], gh);
+  r = run(['close-milestone', 'M1 · Ship the HMI', '--summary', 'shift ran alone'], gh);
   check('close-milestone by title closes when every goal is merged, appends closed/summary', r.code === 0 && m.state === 'closed' && /\nclosed: \d{4}-\d{2}-\d{2} · summary: shift ran alone$/.test(m.description) && /closed \(1 goals\)/.test(r.out));
   r = run(['close-milestone', '52', '--summary', 'x'], gh);
   check('close-milestone refuses a milestone with zero goals', r.code === 1 && /nothing was done/.test(r.out));
@@ -344,11 +340,11 @@ writeCfg(CFG);
   const { openJournal } = require('../scripts/lib/journal');
   fs.rmSync(JOURNAL, { force: true });
   run(['add-goal', '49', 'g', '--brief', BRIEF], gh); // un-roled, before the intent exists
-  openJournal(JOURNAL).intent({ opId: 'D:0', actionId: 'D', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args: { objective: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } }, desired: { title: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } });
+  openJournal(JOURNAL).intent({ opId: 'D:0', actionId: 'D', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args: { statement: 'Pending', ordinal: 1, description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } }, desired: { title: 'Pending', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' } });
   const r = run(['add-item', 'G140', 'x'], gh, { env: { ORCH_ROLE: 'dev' } });
   check('roled add-item leaves the pending add-milestone pending and says so', r.code === 0 && !st.milestones.some(m => /Pending/.test(m.title)) && /skipped 1 Director-only pending/.test(r.out) && openJournal(JOURNAL).pending().length === 1);
   const r2 = run(['add-item', 'G140', 'y'], gh);
-  check('un-roled call replays it, create then retitle', r2.code === 0 && st.milestones.some(m => m.title === 'M53 · Pending') && openJournal(JOURNAL).pending().length === 0);
+  check('un-roled call replays it, create then retitle', r2.code === 0 && st.milestones.some(m => m.title === 'M1 · Pending') && openJournal(JOURNAL).pending().length === 0);
 }
 // --- crash between create and retitle: replay retitles, never duplicates ---------
 {
@@ -356,10 +352,10 @@ writeCfg(CFG);
   const { openJournal } = require('../scripts/lib/journal');
   fs.rmSync(JOURNAL, { force: true });
   st.milestones.push({ number: 53, title: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
-  const args = { objective: 'Half done', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' };
+  const args = { statement: 'Half done', ordinal: 1, description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z' };
   openJournal(JOURNAL).intent({ opId: 'H:0', actionId: 'H', lane: 'M?', subEffect: 'createMilestone', action: { name: 'add-milestone', args }, desired: { title: 'Half done', description: args.description, due_on: args.due_on } });
   run(['add-goal', '49', 'g', '--brief', BRIEF], gh);
-  check('replay after a crash between create and retitle adopts #53 and retitles it', st.milestones.filter(m => /Half done$/.test(m.title)).length === 1 && st.milestones[2].title === 'M53 · Half done' && openJournal(JOURNAL).pending().length === 0);
+  check('replay after a crash between create and retitle adopts #53 and retitles it', st.milestones.filter(m => /Half done$/.test(m.title)).length === 1 && st.milestones[2].title === 'M1 · Half done' && openJournal(JOURNAL).pending().length === 0);
 }
 // --- crash between create-done and retitle-intent: no journal record, bare title -----
 {
@@ -369,7 +365,7 @@ writeCfg(CFG);
   st.milestones.push({ number: 53, title: 'Bare', description: 'target: 2026-10-31 · done: x', due_on: '2026-10-31T00:00:00Z', state: 'open', open_issues: 0, closed_issues: 0 });
   const before = st.milestones.length;
   const r = run(['add-milestone', 'Bare', '--target', '2026-10-31', '--done', 'x'], gh);
-  check('a bare <objective> title is half-done: retitled, not reused, not duplicated', r.code === 0 && r.out.trim() === 'M53' && st.milestones.length === before && st.milestones[2].title === 'M53 · Bare' && openJournal(JOURNAL).pending().length === 0);
+  check('a bare <statement> title is half-done: retitled to the next ordinal, not reused, not duplicated', r.code === 0 && r.out.trim() === 'M1' && st.milestones.length === before && st.milestones[2].title === 'M1 · Bare' && openJournal(JOURNAL).pending().length === 0);
 }
 // --- milestone lookups page past 100 -------------------------------------------------
 {
@@ -479,23 +475,23 @@ writeCfg(CFG);
   fs.rmSync(JOURNAL, { force: true });
   const { st, gh } = ghStore();
   const lockCfg = { __repoLocked: false, board: { pipelineByDomain: { numerics: 'Engine' } } };
-  let r = run(['add-objective', '49', 'HDS stabilizer certifies', '--done', 'certify exit 0 twice'], gh, { lockCfg });
+  let r = run(['add-outcome', '49', 'HDS stabilizer certifies', '--done', 'certify exit 0 twice'], gh, { lockCfg });
   const on = Number(r.out.trim().replace(/^O/, ''));
-  check('add-objective: orch:objective issue in the milestone, prints O<n>, body carries done:', r.code === 0 && /^O\d+$/.test(r.out.trim()) && st.issues[on].milestone === 49 && st.issues[on].labels.some(l => l.name === 'orch:objective') && /^done: certify exit 0 twice/.test(st.issues[on].body));
-  check('add-objective on project with Status Todo', st.fields['PI_I_' + on + ':F_S'] === 's1');
-  r = run(['add-objective', '49', 'HDS stabilizer certifies', '--done', 'other'], gh, { lockCfg });
-  check('add-objective is idempotent on (milestone, title)', r.code === 0 && r.out.trim() === `O${on}` && Object.values(st.issues).filter(i => i.title === 'HDS stabilizer certifies').length === 1);
-  r = run(['add-objective', '49', 'x', '--done', 'y'], gh, { lockCfg, env: { ORCH_ROLE: 'dev' } });
-  check('add-objective is Director-only', r.code === 1 && /refused/.test(r.out));
-  r = run(['add-goal', '49', 'converge', '--brief', BRIEF, '--objective', `O${on}`], gh, { lockCfg });
+  check('add-outcome: orch:outcome issue in the milestone, prints O<n>, body carries done:', r.code === 0 && /^O\d+$/.test(r.out.trim()) && st.issues[on].milestone === 49 && st.issues[on].labels.some(l => l.name === 'orch:outcome') && /^done: certify exit 0 twice/.test(st.issues[on].body));
+  check('add-outcome on project with Status Todo', st.fields['PI_I_' + on + ':F_S'] === 's1');
+  r = run(['add-outcome', '49', 'HDS stabilizer certifies', '--done', 'other'], gh, { lockCfg });
+  check('add-outcome is idempotent on (milestone, title)', r.code === 0 && r.out.trim() === `O${on}` && Object.values(st.issues).filter(i => i.title === 'HDS stabilizer certifies').length === 1);
+  r = run(['add-outcome', '49', 'x', '--done', 'y'], gh, { lockCfg, env: { ORCH_ROLE: 'dev' } });
+  check('add-outcome is Director-only', r.code === 1 && /refused/.test(r.out));
+  r = run(['add-goal', '49', 'converge', '--brief', BRIEF, '--outcome', `O${on}`], gh, { lockCfg });
   const gn = Number(r.out.trim().replace(/^G/, ''));
-  check('add-goal --objective: goal is a sub-issue of the objective', r.code === 0 && st.parent[gn] === on);
+  check('add-goal --outcome: goal is a sub-issue of the outcome', r.code === 0 && st.parent[gn] === on);
   check('add-goal: Pipeline derived from feature via board.pipelineByDomain', st.fields['PI_I_' + gn + ':F_P'] === 'p1');
   r = run(['add-item', `G${gn}`, 'step one'], gh, { lockCfg });
   const it = Number(r.out.trim());
   check('add-item: Pipeline derived from the goal domain when --pipeline is omitted', st.fields['PI_I_' + it + ':F_P'] === 'p1');
-  r = run(['add-goal', '49', 'orphan', '--brief', BRIEF, '--objective', `G${gn}`], gh, { lockCfg });
-  check('add-goal --objective refuses a non-objective issue', r.code === 1 && /not an orch:objective/.test(r.out));
+  r = run(['add-goal', '49', 'orphan', '--brief', BRIEF, '--outcome', `G${gn}`], gh, { lockCfg });
+  check('add-goal --outcome refuses a non-outcome issue', r.code === 1 && /not an orch:outcome/.test(r.out));
   r = run(['add-goal', '49', 'nomap', '--brief', BRIEF], gh);
   check('no pipelineByDomain → Pipeline left unset (no guess)', r.code === 0 && st.fields['PI_I_' + Number(r.out.trim().replace(/^G/, '')) + ':F_P'] === undefined);
 }

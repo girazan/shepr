@@ -47,7 +47,7 @@ under a one-line milestone header, YOU last and visually distinct, gates
     ═══════════════════════════════════════════════════════
      NOW →            <bucket 2>         <bucket 3>
     ───────────────────────────────────────────────────────
-    ── C1 SHU-HDS operable ──
+    ── M1 · 053 NHT operable ──
     G142 · <name>   <status> <⚠ stale Nd>   <metric> · <digest>
      ├─▶ <item>       ├─▶ <item> ──▶ <outcome>
      │                │   = <LABEL> ✅

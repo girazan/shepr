@@ -27,7 +27,7 @@ function write(ctx) {
   // ADVISORY — ORCH_ROLE is env, not a credential — but the refusal runs
   // before replay and before any remote call.
   const goalMove = verb === 'move' && /^G\d+$/i.test(pos[0] || '');
-  if ((verb === 'add-milestone' || verb === 'close-milestone' || verb === 'add-objective' || goalMove) && env && env.ORCH_ROLE) {
+  if ((verb === 'add-milestone' || verb === 'close-milestone' || verb === 'add-outcome' || goalMove) && env && env.ORCH_ROLE) {
     say(`${verb}: refused — ${goalMove ? 'goal priority' : 'milestones'} are the Director's (ORCH_ROLE=${env.ORCH_ROLE})`); return 1;
   }
   const R = `repos/${cfg.owner}/${cfg.repo}`;
@@ -65,10 +65,10 @@ function write(ctx) {
       if (d.milestoneNumber) body.milestone = d.milestoneNumber;
       return gh.rest('POST', `${R}/issues`, body).number;
     },
-    createObjective(d, opId) {
-      const already = createdBy(opId, 'orch:objective');
+    createOutcome(d, opId) {
+      const already = createdBy(opId, 'orch:outcome');
       if (already) return already;
-      return gh.rest('POST', `${R}/issues`, { title: d.title, body: stamp(d.body, opId), labels: ['orch:objective'], milestone: d.milestoneNumber }).number;
+      return gh.rest('POST', `${R}/issues`, { title: d.title, body: stamp(d.body, opId), labels: ['orch:outcome'], milestone: d.milestoneNumber }).number;
     },
     createIssue(d, opId) {
       const already = createdBy(opId, 'orch:item');
@@ -149,7 +149,7 @@ function write(ctx) {
   function runAction(name, lane, args, actionId = crypto.randomUUID()) {
     return ACTIONS[name](args, makeEffect(actionId, lane, { name, args }));
   }
-  const DIRECTOR_ONLY = a => a && (a.name === 'add-milestone' || a.name === 'retitle-milestone' || a.name === 'close-milestone' || a.name === 'add-objective' || (a.name === 'move' && a.args && a.args.goalMove));
+  const DIRECTOR_ONLY = a => a && (a.name === 'add-milestone' || a.name === 'retitle-milestone' || a.name === 'close-milestone' || a.name === 'add-outcome' || (a.name === 'move' && a.args && a.args.goalMove));
   function replay() {
     const pending = journal.pending();
     const roled = !!(env && env.ORCH_ROLE);
@@ -188,8 +188,8 @@ function write(ctx) {
   const pipelineMap = (lockCfg.board && lockCfg.board.pipelineByDomain) || {};
   const pipelineFor = feature => (cfg.fieldIds.pipeline && feature && pipelineMap[feature]) || null;
   const ACTIONS = {
-    'add-objective'(args, effect) {
-      const issue = effect('createObjective', { title: args.title, body: args.body, milestoneNumber: args.milestoneNumber }, 'O?');
+    'add-outcome'(args, effect) {
+      const issue = effect('createOutcome', { title: args.title, body: args.body, milestoneNumber: args.milestoneNumber }, 'O?');
       effect('addToProject', { issue }, `O${issue}`);
       effect('setField', { issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status.Todo }, `O${issue}`);
       return issue;
@@ -197,7 +197,7 @@ function write(ctx) {
     'add-goal'(args, effect) {
       const issue = effect('createGoal', { title: args.name, body: args.body, milestoneNumber: args.milestoneNumber });
       const lane = `G${issue}`; // lane is unknown until createGoal returns
-      if (args.objective) effect('addSubIssue', { issue, goal: args.objective }, lane); // the goal is a sub-issue of its objective
+      if (args.outcome) effect('addSubIssue', { issue, goal: args.outcome }, lane); // the goal is a sub-issue of its outcome
       effect('addToProject', { issue }, lane);
       effect('setField', { issue, fieldId: cfg.fieldIds.status, optionId: cfg.optionIds.status.Todo }, lane);
       // A record journaled before feature: existed carries no args.feature; parse the body so replay still sets the field.
@@ -225,8 +225,11 @@ function write(ctx) {
     move(args, effect) { effect('setField', { issue: args.issue, fieldId: cfg.fieldIds.priority, optionId: optionId('priority', args.bucket) }); return args.issue; },
     'retitle-milestone'(args, effect) { effect('retitleMilestone', { number: args.number, title: args.title }, `M${args.number}`); return args.number; },
     'add-milestone'(args, effect) {
-      const number = effect('createMilestone', { title: args.objective, description: args.description, due_on: args.due_on }, 'M?');
-      effect('retitleMilestone', { number, title: `M${number} · ${args.objective}` }, `M${number}`);
+      // The title carries the PROGRAM ORDINAL (M1, M2, M3), computed by the caller from
+      // the titles already on the board — never the GitHub milestone number. One
+      // milestone, one name: `--milestone M2` and `M2.G2245.S2.R1` mean the same thing.
+      const number = effect('createMilestone', { title: args.statement, description: args.description, due_on: args.due_on }, 'M?');
+      effect('retitleMilestone', { number, title: `M${args.ordinal} · ${args.statement}` }, `M${args.ordinal}`);
       return number;
     },
     'sync-features'(args, effect) { effect('updateFeatureOptions', { names: args.missing }, 'board'); return 'synced'; },
@@ -270,30 +273,30 @@ function write(ctx) {
   };
 
   const VERBS = {
-    'add-objective'() {
+    'add-outcome'() {
       const [ms, title] = pos; const done = str('done');
-      if (!ms || !title || !done) throw new Error('usage: add-objective <milestone#> "<title>" --done "<observable>"');
+      if (!ms || !title || !done) throw new Error('usage: add-outcome <milestone#> "<title>" --done "<observable>"');
       const all = gh.rest('GET', `${R}/milestones?state=open&per_page=100`) || [];
       const m = /^\d+$/.test(ms) ? all.find(x => x.number === Number(ms)) : all.find(x => x.title === ms);
-      if (!m) { say(`add-objective: no open milestone "${ms}" — run \`board-gh milestones\``); return 1; }
-      const seen = gh.rest('GET', `${R}/issues?state=all&labels=orch:objective&per_page=100&sort=created&direction=desc`) || [];
+      if (!m) { say(`add-outcome: no open milestone "${ms}" — run \`board-gh milestones\``); return 1; }
+      const seen = gh.rest('GET', `${R}/issues?state=all&labels=orch:outcome&per_page=100&sort=created&direction=desc`) || [];
       const msNum = x => (x && typeof x === 'object') ? x.number : x; // REST gives an object; a journal/fake may give the number
       const dup = seen.find(i => i.title === title && msNum(i.milestone) === m.number);
       if (dup) { say(`O${dup.number}`); return 0; } // idempotent on (milestone, title)
       const body = `done: ${done}
 
-Objective under M${m.number}. Goals attach as sub-issues. Close only when done: is demonstrated, never because the goals closed.`;
-      say(`O${runAction('add-objective', 'O?', { title, body, milestoneNumber: m.number })}`);
+Outcome under the milestone. Goals attach as sub-issues. Close only when done: is demonstrated, never because the goals closed.`;
+      say(`O${runAction('add-outcome', 'O?', { title, body, milestoneNumber: m.number })}`);
     },
     'add-goal'() {
       const [ms, name] = pos;
       const brief = str('brief');
-      if (!ms || !name || !brief) throw new Error('usage: add-goal <milestone#|backlog|none> "<name>" --brief <file> [--objective O<n>]');
-      let objective = null;
-      if (opt.objective !== undefined) {
-        objective = Number(String(str('objective')).replace(/^O/i, ''));
-        const o = objective ? gh.rest('GET', `${R}/issues/${objective}`) : null;
-        if (!o || !(o.labels || []).some(l => l.name === 'orch:objective')) { say(`add-goal: --objective ${str('objective')} is not an orch:objective issue`); return 1; }
+      if (!ms || !name || !brief) throw new Error('usage: add-goal <milestone#|backlog|none> "<name>" --brief <file> [--outcome O<n>]');
+      let outcome = null;
+      if (opt.outcome !== undefined) {
+        outcome = Number(String(str('outcome')).replace(/^O/i, ''));
+        const o = outcome ? gh.rest('GET', `${R}/issues/${outcome}`) : null;
+        if (!o || !(o.labels || []).some(l => l.name === 'orch:outcome')) { say(`add-goal: --outcome ${str('outcome')} is not an orch:outcome issue`); return 1; }
       }
       let milestoneNumber = null;
       if (ms !== 'none') {
@@ -313,7 +316,7 @@ Objective under M${m.number}. Goals attach as sub-issues. Close only when done: 
         if (!feature) { say('add-goal: the BRIEF needs a `feature:` line (the Project has a Feature field = contract domains)'); return 1; }
         optionId('feature', feature); // validate before any write
       }
-      const issue = runAction('add-goal', 'G?', { name, body, milestoneNumber, objective, feature: cfg.fieldIds.feature ? feature : null });
+      const issue = runAction('add-goal', 'G?', { name, body, milestoneNumber, outcome, feature: cfg.fieldIds.feature ? feature : null });
       say(`G${issue}`);
     },
     'add-item'() {
@@ -343,19 +346,20 @@ Objective under M${m.number}. Goals attach as sub-issues. Close only when done: 
       say(String(issue));
     },
     'add-milestone'() {
-      const objective = pos[0]; const target = str('target'); const done = str('done');
-      if (!objective || !target || !done) throw new Error('usage: add-milestone "<objective>" --target YYYY-MM-DD --done "<observable>"');
+      const statement = pos[0]; const target = str('target'); const done = str('done');
+      if (!statement || !target || !done) throw new Error('usage: add-milestone "<statement>" --target YYYY-MM-DD --done "<observable>"');
       const d = new Date(`${target}T00:00:00Z`);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(target) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== target) throw new Error('--target must be a real date, YYYY-MM-DD');
       const all = pagedMilestones(gh, R, 'all');
-      const malformed = all.find(m => /^M\d+ · /.test(m.title) && m.title.replace(/^M\d+ · /, '') === objective && m.title !== `M${m.number} · ${objective}`);
-      if (malformed) { say(`add-milestone: malformed title on #${malformed.number} "${malformed.title}" — the ordinal must equal the milestone number; fix it on GitHub`); return 1; }
-      const existing = all.find(m => m.title === `M${m.number} · ${objective}`);
+      // The ordinal is this milestone's place in the PROGRAM — one past the highest
+      // `M<n> · ` on the board. It is deliberately unrelated to the GitHub number.
+      const ordinal = 1 + all.reduce((mx, m) => { const x = /^M(\d+) · /.exec(m.title || ''); return x ? Math.max(mx, Number(x[1])) : mx; }, 0);
+      const existing = all.find(m => /^M\d+ · /.test(m.title || '') && m.title.replace(/^M\d+ · /, '') === statement);
       if (existing) { say(`add-milestone: exists: #${existing.number} ${existing.title}`); return 0; }
-      const bare = all.find(m => m.title === objective); // created, crashed before the retitle intent was journaled
-      if (bare) { runAction('retitle-milestone', 'M?', { number: bare.number, title: `M${bare.number} · ${objective}` }); say(`M${bare.number}`); return 0; }
-      const number = runAction('add-milestone', 'M?', { objective, description: `target: ${target} · done: ${done}`, due_on: `${target}T00:00:00Z` });
-      say(`M${number}`);
+      const bare = all.find(m => m.title === statement); // created, crashed before the retitle intent was journaled
+      if (bare) { runAction('retitle-milestone', 'M?', { number: bare.number, title: `M${ordinal} · ${statement}` }); say(`M${ordinal}`); return 0; }
+      runAction('add-milestone', 'M?', { statement, ordinal, description: `target: ${target} · done: ${done}`, due_on: `${target}T00:00:00Z` });
+      say(`M${ordinal}`);
     },
     'sync-features'() {
       const { Q, domains } = require('./board-gh-init');

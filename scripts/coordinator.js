@@ -36,23 +36,25 @@ function filesOfDomains(lsFiles, contract, domains) {
 // file-overlap check must see the other milestone's resident lanes, or two
 // Coordinators dispatch lanes that edit the same files.
 //
-// Two spellings, because a board predating /shepr:milestone has its own
-// titles: `M<n>` is the GitHub milestone NUMBER (shepr's own grammar —
-// add-milestone titles it `M<n> · …`, so name and number agree), `C<n>` is
-// the legacy TITLE prefix that milestoneRank already ranks. On a hand-made
-// board "C1 SHU-HDS operable" is milestone #49, so M49 and C1 are the same
-// milestone by two routes; C<n> is the one a human actually says.
+// The milestone's PROGRAM ORDINAL from its title prefix. null when the title
+// carries none — callers that need an identifier fail closed rather than fall
+// back to the GitHub number, which is what made M49 and C1 the same milestone.
+function milestoneOrdinal(ms) { const m = /^M(\d+)\b/.exec((ms && ms.title) || ''); return m ? Number(m[1]) : null; }
+// ONE spelling (v0.12). `M<n>` is the milestone's PROGRAM ORDINAL, read from
+// its title prefix (`M1 · 053 NHT operable`), never the GitHub milestone
+// number. The number is plumbing: it appears in no identifier a human types.
+// The retired `C<n>` prefix and the number-vs-ordinal ambiguity are gone —
+// one object, one name.
 function pick({ goals, named, filesOf, scope }) {
   const skipped = [];
   const running = goals.filter(g => g.status === 'running').map(g => ({ lane: g.lane, files: new Set(filesOf(g)) }));
-  const sm = scope ? /^([MC])(\d+)$/.exec(String(scope).trim()) : null;
-  if (scope && !sm) throw new Error(`pick: scope must match M<n> or C<n>, got ${scope}`);
-  const sNum = sm ? Number(sm[2]) : null;
-  const byTitle = sm && sm[1] === 'C' && new RegExp('^C' + sNum + '(?![0-9])');
+  const sm = scope ? /^M(\d+)$/.exec(String(scope).trim()) : null;
+  if (scope && !sm) throw new Error(`pick: scope must match M<n>, got ${scope}`);
+  const sNum = sm ? Number(sm[1]) : null;
   const inScope = g => {
     if (!sm) return true;
     if (!g.milestone) return false;
-    return byTitle ? byTitle.test(g.milestone.title || '') : g.milestone.number === sNum;
+    return milestoneOrdinal(g.milestone) === sNum;
   };
   const overlap = g => {
     const mine = filesOf(g);
@@ -241,7 +243,7 @@ function prText({ goal, name, brief, manifests }) {
 }
 // §7 step 8: the summary line is judged by the Coordinator against done:; the script only checks completeness and writes it.
 function milestoneSummary({ milestone, goals, line }) {
-  const mine = goals.filter(g => g.milestone && g.milestone.number === Number(milestone));
+  const mine = goals.filter(g => g.milestone && milestoneOrdinal(g.milestone) === Number(milestone));
   if (!mine.length) throw new Error(`milestone-summary: M${milestone} has no goals`);
   const open = mine.filter(g => g.status !== 'merged');
   if (open.length) throw new Error(`milestone-summary: not merged: ${open.map(g => g.lane).join(' ')}`);
@@ -360,7 +362,7 @@ function sh(cwd, cmd, args) {
 function tickScope(opt, commonDir, env) {
   const flag = typeof opt.milestone === 'string' ? opt.milestone.trim() : null;
   if (flag) {
-    if (!/^[MC]\d+$/.test(flag)) throw new Error(`--milestone must match M<n> or C<n>, got ${flag}`);
+    if (!/^M\d+$/.test(flag)) throw new Error(`--milestone must match M<n>, got ${flag}`);
     return flag;
   }
   const sid = env.ORCH_SESSION_ID;
@@ -569,5 +571,5 @@ function main(argv, deps = {}) {
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
+module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };

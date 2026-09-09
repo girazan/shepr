@@ -72,24 +72,27 @@ const inM = (g, n) => ({ ...g, milestone: { number: n, title: `M${n} · x` } });
     C.pick({ goals, named: 'G3', filesOf, scope: 'M54' }).pick === null);
   check('rule 6: a goal with no milestone is out of every scope',
     C.pick({ goals: [{ ...goal('G3', 'ready', 'hmi'), milestone: null }], filesOf, scope: 'M53' }).pick === null);
-  let threw = false; try { C.pick({ goals, filesOf, scope: '53' }); } catch (e) { threw = /scope must match M<n> or C<n>/.test(e.message); }
+  let threw = false; try { C.pick({ goals, filesOf, scope: '53' }); } catch (e) { threw = /scope must match M<n>/.test(e.message); }
   check('rule 6: a malformed scope throws rather than silently going board-wide', threw);
 }
 {
-  // A board that predates /shepr:milestone titles its milestones itself:
-  // "C1 SHU-HDS operable" IS GitHub milestone #49. Both spellings must land
-  // on it — M<n> by number, C<n> by title prefix.
+  // v0.12: ONE spelling. `M<n>` is the milestone's PROGRAM ORDINAL, read from its
+  // title prefix. The GitHub milestone number is not a route to it — that second
+  // route is what made "M49" and "C1" the same milestone under two names.
   const hand = (lane, num, title) => ({ ...goal(lane, 'ready', 'hmi'), milestone: { number: num, title } });
-  const goals = [hand('G3', 49, 'C1 SHU-HDS operable'), hand('G4', 50, 'C2 Authoring tools ready')];
-  check('C<n> resolves by title prefix', C.pick({ goals, filesOf, scope: 'C1' }).pick.lane === 'G3');
-  check('M<n> resolves by milestone number — same goal, other spelling', C.pick({ goals, filesOf, scope: 'M49' }).pick.lane === 'G3');
-  check('C2 is the other milestone, not a prefix collision with C1', C.pick({ goals, filesOf, scope: 'C2' }).pick.lane === 'G4');
-  check('C<n> does not match a longer number (C1 is not C10)',
-    C.pick({ goals: [hand('G3', 60, 'C10 later')], filesOf, scope: 'C1' }).pick === null);
-  check('C<n> against a shepr-titled board still works by number',
-    C.pick({ goals: [hand('G3', 53, 'M53 · objective')], filesOf, scope: 'M53' }).pick.lane === 'G3');
-  check('skip reason names the spelling the operator used',
-    C.pick({ goals, filesOf, scope: 'C2' }).skipped.some(x => x.lane === 'G3' && x.reason === 'rule 6: outside C2'));
+  const goals = [hand('G3', 49, 'M1 · 053 NHT operable'), hand('G4', 50, 'M2 · authoring lifecycle')];
+  check('M<n> resolves by title ordinal', C.pick({ goals, filesOf, scope: 'M1' }).pick.lane === 'G3');
+  check('M2 is the other milestone, not a prefix collision with M1', C.pick({ goals, filesOf, scope: 'M2' }).pick.lane === 'G4');
+  check('the GitHub milestone number is NOT a second route (M49 ≠ the milestone numbered 49)',
+    C.pick({ goals, filesOf, scope: 'M49' }).pick === null);
+  check('M<n> does not match a longer ordinal (M1 is not M10)',
+    C.pick({ goals: [hand('G3', 60, 'M10 · later')], filesOf, scope: 'M1' }).pick === null);
+  check('a milestone with no M<n> prefix is in no scope — fail closed, never board-wide',
+    C.pick({ goals: [hand('G3', 49, 'C1 SHU-HDS operable')], filesOf, scope: 'M1' }).pick === null);
+  check('the retired C<n> spelling is refused, not silently accepted',
+    (() => { try { C.pick({ goals, filesOf, scope: 'C1' }); return false; } catch (e) { return /scope must match M<n>/.test(e.message); } })());
+  check('skip reason names the scope', C.pick({ goals, filesOf, scope: 'M2' }).skipped.some(x => x.lane === 'G3' && x.reason === 'rule 6: outside M2'));
+  check('milestoneOrdinal reads the title, not the number', C.milestoneOrdinal({ number: 49, title: 'M1 · x' }) === 1 && C.milestoneOrdinal({ number: 49, title: 'C1 x' }) === null);
 }
 {
   // THE reason scope narrows candidates only: M53's running lane must still
@@ -262,19 +265,19 @@ const pr = C.prText({ goal: 'G142', name: 'knowledge-gate', brief: 'BRIEF\ngoal:
 check('prText: title G<k> · <name>; body = BRIEF + passing manifests only', pr.title === 'G142 · knowledge-gate' && pr.body === 'BRIEF\ngoal: g\n\n## Evidence\n- docs/reviews/M53.G142.S1.R1.md\n- docs/reviews/M53.G142.S2.R2.md\n');
 threw = false; try { C.prText({ goal: 'G1', name: 'x', brief: 'B', manifests: [{ path: 'p', text: 'verdict: fail\n' }] }); } catch { threw = true; }
 check('prText refuses a goal with no passing manifest', threw);
-const MG = [{ lane: 'G1', status: 'merged', milestone: { number: 53 } }, { lane: 'G2', status: 'merged', milestone: { number: 53 } }, { lane: 'G3', status: 'ready', milestone: { number: 54 } }];
+const MG = [{ lane: 'G1', status: 'merged', milestone: { number: 53, title: 'M53 · x' } }, { lane: 'G2', status: 'merged', milestone: { number: 53, title: 'M53 · x' } }, { lane: 'G3', status: 'ready', milestone: { number: 54, title: 'M54 · x' } }];
 check('milestoneSummary: one line against done:, goals listed', C.milestoneSummary({ milestone: 53, goals: MG, line: 'operator ran a shift alone' }) === 'M53 · summary: operator ran a shift alone\ngoals: G1 G2\n');
-threw = false; try { C.milestoneSummary({ milestone: 53, goals: MG.concat([{ lane: 'G9', status: 'running', milestone: { number: 53 } }]), line: 'x' }); } catch (e) { threw = /not merged: G9/.test(e.message); }
+threw = false; try { C.milestoneSummary({ milestone: 53, goals: MG.concat([{ lane: 'G9', status: 'running', milestone: { number: 53, title: 'M53 · x' } }]), line: 'x' }); } catch (e) { threw = /not merged: G9/.test(e.message); }
 check('milestoneSummary refuses while a goal is not merged, names it', threw);
 {
   const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');
-  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), now: T0, board: () => ({ goals: [{ ...goal('G142', 'ready', 'hmi'), name: 'knowledge-gate', milestone: { number: 53 } }, { lane: 'G1', status: 'merged', milestone: { number: 53 } }] }) };
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), now: T0, board: () => ({ goals: [{ ...goal('G142', 'ready', 'hmi'), name: 'knowledge-gate', milestone: { number: 53, title: 'M53 · x' } }, { lane: 'G1', status: 'merged', milestone: { number: 53, title: 'M53 · x' } }] }) };
   let out = ''; const c0 = C.main(['pr-text', 'G142'], { ...deps, stdout: s => { out += s; } });
   check('main pr-text: no passing manifest on disk → refused', c0 === 1 && /no passing manifest/.test(out));
   fs.writeFileSync(path.join(CWD, 'docs', 'reviews', 'M53.G142.S1.R1.md'), 'review: M53.G142.S1.R1\nverdict: pass\n');
   out = ''; const c = C.main(['pr-text', 'G142'], { ...deps, stdout: s => { out += s; } });
   check('main pr-text: title, blank line, body with the passing manifest only', c === 0 && out.startsWith('G142 · knowledge-gate\n\nBRIEF\n') && out.endsWith('## Evidence\n- docs/reviews/M53.G142.S1.R1.md\n') && !/S2\.R3/.test(out));
-  out = ''; const c2 = C.main(['milestone-summary', 'M53', '--line', 'shift ran alone'], { ...deps, board: () => ({ goals: [{ lane: 'G1', status: 'merged', milestone: { number: 53 } }] }), stdout: s => { out += s; } });
+  out = ''; const c2 = C.main(['milestone-summary', 'M53', '--line', 'shift ran alone'], { ...deps, board: () => ({ goals: [{ lane: 'G1', status: 'merged', milestone: { number: 53, title: 'M53 · x' } }] }), stdout: s => { out += s; } });
   check('main milestone-summary writes tmp/handoffs/M<n>-coordinator.md', c2 === 0 && fs.readFileSync(path.join(CWD, 'tmp', 'handoffs', 'M53-coordinator.md'), 'utf8') === 'M53 · summary: shift ran alone\ngoals: G1\n' && /M53-coordinator\.md/.test(out));
 }
 

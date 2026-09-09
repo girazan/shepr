@@ -85,7 +85,11 @@ function main(argv, deps = {}) {
   if (!goal) { say(`shepr review: no goal G${goalN} on the board`); return 1; }
   const item = plan ? null : goal.items.find(i => i.step === stepArg);
   if (!plan && !item) { say(`shepr review: G${goalN} has no step ${stepArg}`); return 1; }
-  const M = goal.milestone ? goal.milestone.number : 0;
+  // The manifest id carries the milestone's PROGRAM ORDINAL from its title (`M2 · …`),
+  // the same M a human types. Fail closed rather than fall back to the GitHub number:
+  // a board with both spellings is what made M50 and C2 the same milestone.
+  const M = require('./coordinator').milestoneOrdinal(goal.milestone);
+  if (M === null) { say(`shepr review: milestone "${(goal.milestone || {}).title || '(none)'}" has no M<n> · prefix — retitle it (board-gh retitle-milestone) before reviewing`); return 1; }
   const unit = plan ? 'P' : stepArg;
   const revDir = path.join(root, 'docs', 'reviews');
   fs.mkdirSync(path.join(revDir, 'rubrics'), { recursive: true });
@@ -105,7 +109,13 @@ function main(argv, deps = {}) {
       let def = 'origin/main';
       try { def = g(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim() || def; } catch {}
       const mb = g(['merge-base', def, head]).trim();
-      if (mb && mb !== base) { g(['merge-base', '--is-ancestor', base, mb]); diffFrom = mb; }
+      if (mb && mb !== base) {
+        // The chain head can sit on a SIBLING branch of the goal (parallel steps on separate lanes):
+        // then base..head spans two unrelated tips and the default-branch merge-base is the only
+        // sane diff start. On the same branch keep the original rule: mb must descend from base.
+        let baseOnHead = true; try { g(['merge-base', '--is-ancestor', base, head]); } catch { baseOnHead = false; }
+        if (!baseOnHead) diffFrom = mb; else { g(['merge-base', '--is-ancestor', base, mb]); diffFrom = mb; }
+      }
     } catch { diffFrom = base; }
   }
   // Rubrics: review-goal always; the step's recipe rubric (or spec for a plan round) when the file exists.

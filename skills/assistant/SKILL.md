@@ -57,9 +57,9 @@ the file; `scripts/telegram.js` exits 78 with that hint otherwise).
 5. The card, ≤ 25 lines, shaped for a phone: one bold headline
    (`📊 <b>Pertasim</b> · Sat 18:50`), then sections with one emoji each
    and one line per item — `🎯 bars` **one line per open milestone**
-   (`C1 · 5/8 ▲1`, `C2 · 0/2`; value → value, ▲▼ delta), `✅ merged`,
+   (`M1 · 5/8 ▲1`, `M2 · 0/2`; value → value, ▲▼ delta), `✅ merged`,
    `🧭 rulings open` (id, deadline), `⛔ blocked`, `🔥 needs you`. Prefix
-   every goal line with its milestone (`C2 G2245 …`) — with two campaigns
+   every goal line with its milestone (`M2 G2245 …`) — with two milestones
    live an unlabelled lane is unreadable, and the operator's first question
    is always "which one". A single open milestone: name it in the headline
    instead and drop the prefixes. Numbers only where they change what the
@@ -113,7 +113,7 @@ base <code>autopilot/2026-09-06</code> · 4 lanes · rulings will come here
 🏁 <b>Autopilot stopped · 3 rounds flat on the drum</b>
 merged 3 · reverted 0 · rulings open 2 · wall named <b>·</b> vent density (#2146)
 
-📊 <b>C1 · SHU-HDS operable · Sat 20:00</b>
+📊 <b>M1 · 053 NHT operable · Sat 20:00</b>
 
 🎯 <b>Bars</b>
 armed settle <b>·</b> 37.9 s → 41.2 s ▲ 3.3 (gate 1000 s)

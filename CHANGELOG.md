@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 — 2026-09-09
+
+**Breaking: one name per level.** The vocabulary had four collisions — `C1` and `M49` were the same milestone under two prefixes; an identifier's number sometimes meant a GitHub id and sometimes a position, unmarked; "goal" and "objective" are English synonyms one level apart; and `skills/milestone` used "objective" for two different things in one file.
+
+### Changed
+- **`M<n>` is the milestone's PROGRAM ORDINAL, read from its title (`M1 · 053 NHT operable`).** The GitHub milestone number appears in no identifier a human types, and is no longer a second route to a milestone: `--milestone M49` does not resolve the milestone numbered 49. `milestoneOrdinal()` is the one reader; `shepr review` fails closed with a retitle instruction when a title carries no `M<n> ·` prefix, rather than falling back to the number.
+- **The `C<n>` prefix is retired.** `pick`, `tickScope`, `session-marker --ids`, `ORCH_IDS` and `milestoneRank` accept `M<n>` only. A scope of `C1` is refused, not silently accepted.
+- **`add-milestone` titles with the next ordinal**, one past the highest `M<n> ·` on the board, and takes a `<statement>` rather than an `<objective>` — the milestone's own one-line statement is not the outcome layer.
+- **objective → outcome.** Label `orch:objective` → `orch:outcome`; verb `add-objective` → `add-outcome`; flag `--objective` → `--outcome`. `O<n>` keys are unchanged. Progress stays outcomes closed over outcomes total.
+
+### Migration (a board created before 0.12)
+1. Retitle each milestone to `M<ordinal> · <statement>` (`board-gh retitle-milestone`), ordinals starting at 1 in program order.
+2. Rename the label: `gh label edit orch:objective --name orch:outcome`.
+3. Rename existing review manifests `M<github#>.G…` → `M<ordinal>.G…` and update the references in their worklogs; the evidence chain reads the filename.
+
 ## 0.11.4 — 2026-09-09
 
 ### Fixed

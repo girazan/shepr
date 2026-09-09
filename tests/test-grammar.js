@@ -65,7 +65,7 @@ check('loop states the LAUNCH line grammar',
   loop.includes('LAUNCH <date> · <prompt file> · max-iter <n> · budget <tokens> · promise <string>'));
 
 // 5. Milestone grammar — canonical in skills/milestone/SKILL.md only.
-const MS_TITLE = 'M<n> · <objective>';
+const MS_TITLE = 'M<n> · <statement>'; // n = the PROGRAM ORDINAL, never the GitHub milestone number
 const MS_DESC = 'target: <YYYY-MM-DD> · done: <observable>';
 check('milestone states the title grammar', milestone.includes(MS_TITLE));
 check('milestone states the description grammar', milestone.includes(MS_DESC));

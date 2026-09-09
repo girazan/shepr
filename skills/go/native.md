@@ -42,7 +42,7 @@ steps are visible, never silent.
 ## The board
 
 Canonical store: GitHub Issues + the repo's Project (`.orch/board.json`,
-spec §4). Milestone (operator's, `M<n> · …`; legacy `C<n>` still sorts) → goal = `orch:goal` issue
+spec §4). Milestone (operator's, `M<n> · …`, `n` = the program ordinal in the title) → goal = `orch:goal` issue
 (`G<n>`) → items = sub-issues; the item marked `gate:` closes the
 goal. Goal status is never written — it is folded from the items:
 `merged` (goal closed) · `blocked` (an item has `orch:blocked`) ·

@@ -117,7 +117,7 @@ Only on operator request. Preview first, then apply:
   if the lock has a `repos[<key>]` entry, write `board: { github: true }`
   into it (same atomic-replace path as contract); delete `docs/BOARD.md`
   if present — no import, the file is retired (spec §4, Non-goals).
-  Existing worklogs named `C<n>-…` are left alone; new goals are `G<n>-…`.
+  Existing worklogs named `C<n>-…` (the retired prefix) are left alone; new goals are `G<n>-…`.
 
 ## Ratifying ADRs
 
