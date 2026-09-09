@@ -56,7 +56,7 @@ check('store persisted', JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'ow
   go(['park', '--item', '78', '--q', 'vent density?', '--opt', 'a=live', '--opt', 'c=keep', '--rec', 'a']);
   go(['digest'], '2026-09-06T13:00:00.000Z');
   check('digest: one message, every open ruling, options with the recommendation marked',
-    /^2 rulings waiting · reply "R<n> <letter>" per line/.test(o)
+    /^2 rulings waiting · press a button below, or reply "R<n> <letter>"/.test(o)
     && /R1 · #77 · G142 · Steady-state solver · parked 3h · auto 2026-09-06T14:00 -> \(a\)/.test(o)
     && /R2 .*never auto-resolves/.test(o) && /\(a\) live  <- recommended/.test(o) && /evidence: tmp\/x\.md/.test(o));
   go(['decide', 'R1', 'a']); go(['digest'], '2026-09-06T13:00:00.000Z');

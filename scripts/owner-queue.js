@@ -119,7 +119,7 @@ function main(argv, deps = {}) {
     // per ruling: the operator reads once and answers in a batch.
     const open = store.rulings.filter(x => !x.decided);
     if (!open.length) { say('no open rulings'); return 0; }
-    const out = [`${open.length} ruling${open.length > 1 ? 's' : ''} waiting · reply "R<n> <letter>" per line`, ''];
+    const out = [`${open.length} ruling${open.length > 1 ? 's' : ''} waiting · press a button below, or reply "R<n> <letter>"`, ''];
     for (const r of open) {
       const age = Math.round((now.getTime() - new Date(r.parkedAt).getTime()) / 36e5);
       out.push(`${r.id} · #${r.item}${r.goal ? ` · ${r.goal}` : ''} · ${r.feature || 'no feature'} · parked ${age}h · ${r.deadline ? `auto ${r.deadline.slice(0, 16)} -> (${r.rec})` : 'never auto-resolves'}`);

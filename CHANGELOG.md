@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.4 — 2026-09-09
+
+### Fixed
+- **The ruling digest reached the phone with no way to answer.** `owner-queue digest | telegram digest` sent plain text whose "reply R<n> <letter>" instruction the poller did not understand, and no card with buttons was posted. Now the last digest message carries one button row per OPEN ruling (`R57 (a) (b) (c)`), each open ruling records that message id, and a press rebuilds the keyboard with the rows still open instead of wiping it. A typed `R57 a` (any case, `:` or space) decides exactly like a press, with the same receipt.
+
 ## 0.11.3 — 2026-09-09
 
 Patch from the C2 coordinator, tested and adopted.

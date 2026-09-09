@@ -8,11 +8,13 @@
 //   ruling R<n>                            post one open ruling with a/b/c inline buttons
 //   rulings                                post every open ruling not yet posted
 //   poll [--once]                          drain button presses → owner-queue decide … --by telegram;
+//                                          a typed "R<n> <letter>" decides like a button press;
 //                                          relay allowlisted texts (stop|status|focus G<n>|digest now) to
 //                                          .orch/assistant-inbox.jsonl (coordinator `wait` wakes on them);
 //                                          --once = one getUpdates then exit. One instance per repo:
 //                                          .orch/telegram-poll.pid is the lock (exit 75 if another is alive)
-//   digest [--file <path>]                 post a digest (file or stdin; ≤ 4000 chars per message, split)
+//   digest [--file <path>]                 post a digest (file or stdin; ≤ 4000 chars per message, split);
+//                                          the last message carries one button row per OPEN ruling
 //
 // Only the allowlisted chat can press buttons or be heard; anything else
 // is dropped and audited. Offsets persist in .orch/telegram-offset.json.
@@ -54,6 +56,12 @@ function rulingMessage(r) {
   return { text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [buttons] } };
 }
 
+// One button row per OPEN ruling — the digest is one message, so its keyboard carries every
+// open ruling; on a press the keyboard is rebuilt with the rows still open (not wiped).
+const keyboardFor = (store, onlyMessageId) => store.rulings
+  .filter(r => !r.decided && (onlyMessageId == null || r.telegramMessageId === onlyMessageId))
+  .map(r => Object.keys(r.opt).map(k => ({ text: `${r.id} (${k})`, callback_data: `${r.id}:${k}` })));
+
 async function main(argv, deps = {}) {
   const root = deps.root || process.cwd();
   const say = deps.stdout || (s => process.stdout.write(s + '\n'));
@@ -78,8 +86,11 @@ async function main(argv, deps = {}) {
     if (p && !fs.existsSync(p)) { say('usage: telegram digest [--file <path>] [--html]  (no --file = stdin)'); return 64; }
     const text = p ? fs.readFileSync(p, 'utf8') : (deps.stdin ? deps.stdin() : fs.readFileSync(0, 'utf8'));
     if (!text.trim()) { say('digest: nothing to send'); return 0; }
-    for (const c of chunk(text)) await send(c, fmt);
-    say('digest sent'); return 0;
+    // The last chunk carries the buttons: one row per open ruling, so the phone answers from the digest itself.
+    const store = readStore(); const rows = keyboardFor(store); const parts = chunk(text); let res = null;
+    for (let i = 0; i < parts.length; i++) res = await send(parts[i], { ...fmt, ...(i === parts.length - 1 && rows.length ? { reply_markup: { inline_keyboard: rows } } : {}) });
+    if (rows.length && res && res.message_id) { for (const r of store.rulings) if (!r.decided) r.telegramMessageId = res.message_id; writeStore(store); }
+    say(`digest sent${rows.length ? ` · ${rows.length} ruling button row(s)` : ''}`); return 0;
   }
   if (verb === 'ruling' || verb === 'rulings') {
     const store = readStore();
@@ -101,6 +112,22 @@ async function main(argv, deps = {}) {
     fs.writeFileSync(pidP, `${process.pid}\n`);
     let offset = 0; try { offset = JSON.parse(fs.readFileSync(offP, 'utf8')).offset || 0; } catch {}
     const queue = deps.queue || require('./owner-queue');
+    // Button or typed answer → owner-queue decide; rebuild the pressed message's keyboard with what is still open; receipt under it.
+    const decide = async (id, opt, messageId) => {
+      let out = ''; const rc = queue.main(['decide', id, opt, '--by', 'telegram'], { root, stdout: s => { out += s; } });
+      const fresh = rc === 0 && !/already decided/.test(out);
+      if (fresh) {
+        const st = readStore(); const carded = st.rulings.find(r => r.id === id && r.telegramMessageId);
+        const target = carded ? carded.telegramMessageId : messageId;
+        await api(secrets, 'editMessageReplyMarkup', { chat_id: secrets.chatId, message_id: target, reply_markup: { inline_keyboard: keyboardFor(st, target) } }, fetchFn).catch(() => {});
+        // A visible receipt — the toast disappears in seconds.
+        const woke = /onDecision ran/.test(out) ? ' · coordinator woken' : '';
+        await api(secrets, 'sendMessage', { chat_id: secrets.chatId, reply_to_message_id: messageId, parse_mode: 'HTML',
+          text: `✅ <b>${id} → (${opt})</b> recorded ${new Date().toISOString().slice(11, 16)} UTC${woke}` }, fetchFn).catch(() => {});
+      }
+      say(`${rc === 0 ? 'DECIDED' : 'REJECTED'} ${id} (${opt}) via telegram — ${out.trim()}`);
+      return { fresh, rc };
+    };
     let rounds = 0;
     do {
       let updates;
@@ -122,17 +149,8 @@ async function main(argv, deps = {}) {
           if (fromChat !== secrets.chatId) { say(`DROP callback from chat ${fromChat}`); await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id, text: 'not allowed' }, fetchFn).catch(() => {}); continue; }
           const m = /^(R\d+):([a-z])$/.exec(cq.data || '');
           if (!m) { await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id }, fetchFn).catch(() => {}); continue; }
-          let out = ''; const rc = queue.main(['decide', m[1], m[2], '--by', 'telegram'], { root, stdout: s => { out += s; } });
-          const fresh = rc === 0 && !/already decided/.test(out);
-          await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id, text: fresh ? `${m[1]} → (${m[2]})` : 'already decided' }, fetchFn).catch(() => {});
-          if (fresh) {
-            await api(secrets, 'editMessageReplyMarkup', { chat_id: secrets.chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }, fetchFn).catch(() => {});
-            // A visible receipt under the card — the toast disappears in seconds.
-            const woke = /onDecision ran/.test(out) ? ' · coordinator woken' : '';
-            await api(secrets, 'sendMessage', { chat_id: secrets.chatId, reply_to_message_id: cq.message.message_id, parse_mode: 'HTML',
-              text: `✅ <b>${m[1]} → (${m[2]})</b> recorded ${new Date().toISOString().slice(11, 16)} UTC${woke}` }, fetchFn).catch(() => {});
-          }
-          say(`${rc === 0 ? 'DECIDED' : 'REJECTED'} ${m[1]} (${m[2]}) via telegram — ${out.trim()}`);
+          const d = await decide(m[1], m[2], cq.message.message_id);
+          await api(secrets, 'answerCallbackQuery', { callback_query_id: cq.id, text: d.fresh ? `${m[1]} → (${m[2]})` : 'already decided' }, fetchFn).catch(() => {});
           continue;
         }
         const msg = u.message;
@@ -140,6 +158,8 @@ async function main(argv, deps = {}) {
           const fromChat = String(msg.chat && msg.chat.id);
           if (fromChat !== secrets.chatId) { say(`DROP message from chat ${fromChat}`); continue; }
           const text = msg.text.trim();
+          const ans = /^(R\d+)\s*[:\s]\s*([a-z])$/i.exec(text); // "R57 a" typed instead of pressed
+          if (ans) { await decide(ans[1].toUpperCase(), ans[2].toLowerCase(), msg.message_id); continue; }
           if (RELAY.some(re => re.test(text))) {
             fs.mkdirSync(path.dirname(inboxP), { recursive: true });
             fs.appendFileSync(inboxP, JSON.stringify({ ts: new Date().toISOString(), text, by: 'telegram' }) + '\n');

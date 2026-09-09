@@ -72,6 +72,25 @@ queue.main(['park', '--item', '8', '--q', 'vent?', '--opt', 'a=live', '--opt', '
   calls.length = 0;
   check('digest reads stdin when --file is absent', (await run(['digest'], { stdin: () => 'from stdin' })) === 0 && calls.at(-1).body.text === 'from stdin');
 
+  // 0.11.4: the digest carries one button row per OPEN ruling; a press rebuilds the keyboard with what is still open; a typed "R<n> <letter>" decides.
+  queue.main(['park', '--item', '8', '--q', 'third?', '--opt', 'a=yes', '--opt', 'b=no', '--rec', 'a'], { root: ROOT, cfg, board, stdout: () => {} }); // R3 (Plant Editor → never auto-resolves)
+  calls.length = 0;
+  await run(['digest'], { stdin: () => 'two open' });
+  let kb = calls.at(-1).body.reply_markup && calls.at(-1).body.reply_markup.inline_keyboard;
+  const st2 = JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'owner-queue.json'), 'utf8'));
+  check('digest: one button row per open ruling (R1 decided → absent), message id recorded on each open ruling', kb && kb.length === 2 && kb[0].map(b => b.callback_data).join(',') === 'R2:a,R2:c' && kb[1].map(b => b.callback_data).join(',') === 'R3:a,R3:b' && st2.rulings[1].telegramMessageId === st2.rulings[2].telegramMessageId && /1 ruling button row|2 ruling button row/.test(out));
+  const digestId = st2.rulings[1].telegramMessageId;
+  updates = [{ update_id: 20, callback_query: { id: 'c4', data: 'R2:c', message: { message_id: digestId, chat: { id: 42 } } } }];
+  calls.length = 0;
+  await run(['poll', '--once'], { isAlive: () => false });
+  const edit = calls.find(c => c.method === 'editMessageReplyMarkup');
+  check('press on the digest: R2 decided, keyboard rebuilt with only R3\'s row', /DECIDED R2 \(c\)/.test(out) && edit && edit.body.message_id === digestId && edit.body.reply_markup.inline_keyboard.length === 1 && edit.body.reply_markup.inline_keyboard[0][0].callback_data === 'R3:a');
+  updates = [{ update_id: 21, message: { message_id: 555, chat: { id: 42 }, text: 'r3 B' } }];
+  calls.length = 0;
+  await run(['poll', '--once'], { isAlive: () => false });
+  const st3 = JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'owner-queue.json'), 'utf8'));
+  check('typed "r3 B" decides R3 (b) by telegram, receipt replies to the text, keyboard emptied', st3.rulings[2].decided && st3.rulings[2].decided.opt === 'b' && st3.rulings[2].decided.by === 'telegram' && calls.some(c => c.method === 'sendMessage' && c.body.reply_to_message_id === 555 && /R3 → \(b\)/.test(c.body.text)) && calls.some(c => c.method === 'editMessageReplyMarkup' && c.body.reply_markup.inline_keyboard.length === 0) && !/IGNORED/.test(out));
+
   console.log(`\n${pass}/${pass + fail} pass`);
   process.exit(fail ? 1 : 0);
 })();
