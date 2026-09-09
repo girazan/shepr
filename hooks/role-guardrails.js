@@ -9,7 +9,8 @@
 //
 //   reviewer      Edit|Write only under docs/reviews/
 //   anyone else   no Edit|Write under docs/reviews/ (the evidence lint is what counts)
-//   coordinator   Read only tmp/handoffs/, docs/reviews/, .claude/orch.json,
+//   coordinator   Write only tmp/ and .orch/ (firstmate hard rule 1: the supervisor
+//                 books the work, a Dev does it); Read only tmp/handoffs/, docs/reviews/, .claude/orch.json,
 //                 the focus goal's worklog (goal from the session marker)
 //   architect     no Edit|Write on a contract domain's paths (docs/adr/, worklog allowed)
 //   dev           no Edit|Write touching the worklog's first (BRIEF) block
@@ -61,6 +62,9 @@ try {
   }
   if (isWrite && role !== 'reviewer' && under('docs/reviews')) {
     refuse(`only the gate reviewer writes docs/reviews/ (ORCH_ROLE=${role}); manifests come from \`shepr review\`, never by hand (${rel}).`);
+  }
+  if (isWrite && role === 'coordinator' && !(under('tmp') || under('.orch'))) {
+    refuse(`ORCH_ROLE=coordinator writes no code: tmp/ and .orch/ only — the Coordinator books the work, a Dev does it. Dispatch a step for ${rel}.`);
   }
   if (!isWrite && role === 'coordinator') {
     const goal = (ensureMarker(j).marker || {}).goal || null;

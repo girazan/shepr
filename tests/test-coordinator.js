@@ -340,5 +340,40 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   check('main anchor: unknown goal → exit 1', code === 1 && /no worklog/.test(out));
 }
 
+// --- v0.11: event-driven wake -----------------------------------------------------------
+{
+  const snap = C.snapshot({ agents: [{ name: 'impl-a', agent_status: 'working' }, { pane_id: 'p9', agent_status: 'idle' }],
+    rulings: [{ id: 'R1', decided: null }, { id: 'R2', decided: { opt: 'b' } }], reviews: 2 });
+  check('snapshot: names from name or pane_id, rulings open vs decided, review count',
+    JSON.stringify(snap) === JSON.stringify({ agents: { 'impl-a': 'working', p9: 'idle' }, rulings: { R1: 'open', R2: 'b' }, reviews: 2 }));
+  const base = { agents: { a: 'working', b: 'working' }, rulings: { R1: 'open' }, reviews: 1 };
+  check('wakeReason: nothing moved -> null', C.wakeReason(base, JSON.parse(JSON.stringify(base))) === null);
+  check('wakeReason: working -> working elsewhere is not a wake', C.wakeReason(base, { ...base, agents: { a: 'working', b: 'working' } }) === null);
+  check('wakeReason: a lane settles', C.wakeReason(base, { ...base, agents: { a: 'idle', b: 'working' } }) === 'a working -> idle');
+  check('wakeReason: blocked counts as settled', C.wakeReason(base, { ...base, agents: { a: 'working', b: 'blocked' } }) === 'b working -> blocked');
+  check('wakeReason: a new lane joins', /joined/.test(C.wakeReason(base, { ...base, agents: { a: 'working', b: 'working', c: 'working' } })));
+  check('wakeReason: a lane leaves', /left/.test(C.wakeReason(base, { ...base, agents: { a: 'working' } })));
+  check('wakeReason: a ruling decided', C.wakeReason(base, { ...base, rulings: { R1: 'a' } }) === 'ruling R1 decided (a)');
+  check('wakeReason: a manifest lands', /review manifest landed/.test(C.wakeReason(base, { ...base, reviews: 2 })));
+  check('wakeReason: fewer manifests is not a wake', C.wakeReason({ ...base, reviews: 3 }, base) === null);
+
+  // the verb: fake clock + fake sleep + a fleet that settles on the 3rd read
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo-wait');
+  fs.mkdirSync(path.join(CWD, '.claude'), { recursive: true });
+  let t = 0, reads = 0;
+  const states = ['working', 'working', 'idle'];
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), config: {}, now: 0,
+    clock: () => t, sleep: ms => { t += ms; },
+    fleetList: () => { const s = states[Math.min(reads++, states.length - 1)]; return JSON.stringify({ result: { agents: [{ name: 'impl-a', agent_status: s }] } }); } };
+  let out = ''; let code = C.main(['wait', '--poll', '10', '--timeout', '600'], { ...deps, stdout: s => { out += s; } });
+  check('main wait: returns on the first settled lane, names it and the elapsed time', code === 0 && /^wake: impl-a working -> idle · after \d+s/.test(out) && t === 20000);
+  t = 0; reads = 0; out = '';
+  code = C.main(['wait', '--poll', '10', '--timeout', '25'], { ...deps, stdout: s => { out += s; },
+    fleetList: () => JSON.stringify({ result: { agents: [{ name: 'impl-a', agent_status: 'working' }] } }) });
+  check('main wait: a quiet fleet returns timeout, exit 0, never throws', code === 0 && /^wake: timeout after \d+s · fleet 1 · nothing moved/.test(out));
+  out = '';
+  code = C.main(['wait', '--poll', '10', '--timeout', '25'], { ...deps, stdout: s => { out += s; }, fleetList: () => { throw new Error('herdr down') } });
+  check('main wait: an unreachable fleet does not crash the watcher', code === 0 && /timeout/.test(out));
+}
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

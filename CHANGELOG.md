@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0 — 2026-09-09
+
+Three ideas adopted from [kunchenguid/firstmate](https://github.com/kunchenguid/firstmate) (MIT), which solves the fleet-mechanics problem shepr deliberately does not. Not a fork: its work model is a markdown backlog with ship/scout tasks, which contradicts the milestone/objective/goal board. Comparison written up in the pertasim repo.
+
+### Added
+- **Event-driven wake.** `coordinator wait [--timeout S] [--poll S]` blocks INSIDE the script and returns the moment the fleet changes, printing one `wake: <reason>` line. It wakes on a lane reaching idle/done/blocked, a lane joining or leaving, a ruling decided, or a new review manifest; else on its timeout (`fleet.waitTimeoutSeconds`, default 1800). A tick on a timer pays tokens for every quiet interval; this pays none. `wakeReason`/`snapshot` are pure and tested; only the poll loop touches the world.
+- **`owner-queue digest`.** The whole open queue as ONE message — id, goal, feature, age, deadline, question, options with the recommendation marked, evidence — instead of a notification per ruling. The operator reads once and answers in a batch.
+
+### Changed
+- **The Coordinator writes nothing but `tmp/` and `.orch/`** (firstmate's hard rule 1: the supervisor books the work, a Dev does it). `role-guardrails` already refused coordinator *reads* outside its lane but had no write row, so a coordinator pane could edit source; a test even asserted that hole. Still ADVISORY, like every ORCH_ROLE row.
+- **`rulings.autoResolveHours: 0` (or `null`/`false`) now means never auto-resolve.** Previously any non-positive value silently fell back to 4 hours. A deadline is not a decision: a timer answering a physics call is the failure mode this switch removes.
+
+### Fixed
+- `coordinator wait` read its start time from one clock and its elapsed time from another, which made elapsed negative forever under an injected clock. One clock now.
+
 ## 0.10.2 — 2026-09-08
 
 ### Fixed

@@ -128,6 +128,17 @@ A goal that closes may complete its objective (`O<n>`, the goal issue's parent).
 
 When every goal under `M<n>` is merged: judge one line against the milestone's `done:` and run `<c> milestone-summary M<n> --line "<that line>"` → `tmp/handoffs/M<n>-coordinator.md`. Tell the Director to run `/shepr:milestone close`; you never close it.
 
+## Waiting between ticks (v0.11)
+
+A tick on a timer pays tokens for every quiet interval. End each tick with
+`<c> wait [--timeout <s>] [--poll <s>]`: it blocks inside the script — no
+tokens, no turn — and returns the moment the fleet actually changes, printing
+one `wake: <reason>` line. It wakes on a lane reaching `idle`/`done`/`blocked`,
+a lane joining or leaving, a ruling being decided, or a new review manifest;
+otherwise on its timeout (default 1800 s, `fleet.waitTimeoutSeconds`). Under
+`/loop` the interval becomes a fallback, not the driver: the wake line is the
+first thing the next tick reports.
+
 ## Every tick ends
 
 Report ≤5 lines: `tick: <action> · G<k> S<j> · fleet <count>/<capacity> · pulse <age>m`, then the skipped goals, then what the Director owes (attention items, a push, a merge). Under `loop`, stop — the next `/loop` invocation is the next tick.

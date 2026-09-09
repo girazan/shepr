@@ -46,5 +46,37 @@ check('store persisted', JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'ow
   check('onDecision failure is reported, decision still recorded', /onDecision failed: boom/.test(out) && JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'owner-queue.json'), 'utf8')).rulings.find(r => r.id === 'R4').decided.opt === 'a');
 }
 
+// --- v0.11: batched digest + auto-resolve switched off ---------------------------------
+{
+  const R = path.join(__dirname, 'scratch-owner-queue-digest');
+  fs.rmSync(R, { recursive: true, force: true }); fs.mkdirSync(path.join(R, '.claude'), { recursive: true });
+  const d = { rulings: { autoResolveHours: 4, never: ['Process & equipment models'] } };
+  let o = ''; const go = (argv, now) => { o = ''; return main(argv, { root: R, cfg: d, board, now: now || T0, stdout: s => { o += s + '\n'; } }); };
+  go(['park', '--item', '77', '--q', 'merge order?', '--opt', 'a=#2155 first', '--opt', 'b=#2148 first', '--rec', 'a', '--evidence', 'tmp/x.md']);
+  go(['park', '--item', '78', '--q', 'vent density?', '--opt', 'a=live', '--opt', 'c=keep', '--rec', 'a']);
+  go(['digest'], '2026-09-06T13:00:00.000Z');
+  check('digest: one message, every open ruling, options with the recommendation marked',
+    /^2 rulings waiting · reply "R<n> <letter>" per line/.test(o)
+    && /R1 · #77 · G142 · Steady-state solver · parked 3h · auto 2026-09-06T14:00 -> \(a\)/.test(o)
+    && /R2 .*never auto-resolves/.test(o) && /\(a\) live  <- recommended/.test(o) && /evidence: tmp\/x\.md/.test(o));
+  go(['decide', 'R1', 'a']); go(['digest'], '2026-09-06T13:00:00.000Z');
+  check('digest: a decided ruling drops out of the next digest', /^1 ruling waiting/.test(o) && !/R1 ·/.test(o) && /R2 ·/.test(o));
+}
+{
+  const ROOT2 = path.join(__dirname, 'scratch-owner-queue-off');
+  fs.rmSync(ROOT2, { recursive: true, force: true }); fs.mkdirSync(path.join(ROOT2, '.claude'), { recursive: true });
+  const off = { rulings: { autoResolveHours: 0, never: [] } };
+  let o2 = '';
+  const r2 = main(['park', '--item', '77', '--q', 'q', '--opt', 'a=x'], { root: ROOT2, cfg: off, board, now: T0, stdout: s => { o2 += s + '\n'; } });
+  check('autoResolveHours 0 -> never auto-resolves even for an auto-eligible feature', r2 === 0 && /never auto-resolves/.test(o2));
+  o2 = '';
+  main(['tick'], { root: ROOT2, cfg: off, board, now: '2026-09-07T10:00:00.000Z', stdout: s => { o2 += s + '\n'; } });
+  check('autoResolveHours 0 -> a day later the tick still resolves nothing', o2.trim() === '');
+  const q = JSON.parse(fs.readFileSync(path.join(ROOT2, '.orch', 'owner-queue.json'), 'utf8'));
+  check('autoResolveHours 0 -> the parked ruling stays undecided', q.rulings[0].decided === null && q.rulings[0].deadline === null);
+  o2 = '';
+  main(['digest'], { root: path.join(__dirname, 'scratch-owner-queue-empty'), cfg: off, board, now: T0, stdout: s => { o2 += s + '\n'; } });
+  check('digest on an empty queue says so', o2.trim() === 'no open rulings');
+}
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);

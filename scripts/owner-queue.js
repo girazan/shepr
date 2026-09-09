@@ -36,6 +36,9 @@ function main(argv, deps = {}) {
   const cfg = deps.cfg || require('../hooks/lib/config').loadConfig({ cwd: root });
   const rl = cfg.rulings || {};
   const hours = Number(rl.autoResolveHours) > 0 ? Number(rl.autoResolveHours) : 4;
+  // v0.11: an explicit 0 / null / false means NEVER auto-resolve. A deadline is not a
+  // decision: a timer answering a physics call is the failure mode this switch removes.
+  const autoDisabled = rl.autoResolveHours === 0 || rl.autoResolveHours === null || rl.autoResolveHours === false;
   const never = new Set((rl.never || []).map(s => String(s).toLowerCase()));
   const storeP = path.join(root, '.orch', 'owner-queue.json');
   const mdP = path.join(root, 'tmp', 'OWNER-QUEUE.md');
@@ -66,7 +69,7 @@ function main(argv, deps = {}) {
       } catch {}
     }
     const rec = o.rec && o.opt[o.rec] ? o.rec : Object.keys(o.opt)[0];
-    const auto = !!feature && !never.has(String(feature).toLowerCase());
+    const auto = !autoDisabled && !!feature && !never.has(String(feature).toLowerCase());
     const r = { id: `R${store.next++}`, item: itemNo, goal, feature, q: o.q, opt: o.opt, rec, evidence: o.evidence || null,
       parkedAt: now.toISOString(), deadline: auto ? new Date(now.getTime() + hours * 3600000).toISOString() : null, warned: false, decided: null };
     store.rulings.push(r); save();
@@ -111,9 +114,25 @@ function main(argv, deps = {}) {
     }
     save(); return 0;
   }
+  if (verb === 'digest') {
+    // ONE message for the whole queue (firstmate's away-mode digest) instead of a ping
+    // per ruling: the operator reads once and answers in a batch.
+    const open = store.rulings.filter(x => !x.decided);
+    if (!open.length) { say('no open rulings'); return 0; }
+    const out = [`${open.length} ruling${open.length > 1 ? 's' : ''} waiting · reply "R<n> <letter>" per line`, ''];
+    for (const r of open) {
+      const age = Math.round((now.getTime() - new Date(r.parkedAt).getTime()) / 36e5);
+      out.push(`${r.id} · #${r.item}${r.goal ? ` · ${r.goal}` : ''} · ${r.feature || 'no feature'} · parked ${age}h · ${r.deadline ? `auto ${r.deadline.slice(0, 16)} -> (${r.rec})` : 'never auto-resolves'}`);
+      out.push(`  ${r.q}`);
+      for (const [k, v] of Object.entries(r.opt)) out.push(`  (${k}) ${v}${k === r.rec ? '  <- recommended' : ''}`);
+      if (r.evidence) out.push(`  evidence: ${r.evidence}`);
+      out.push('');
+    }
+    say(out.join('\n').trimEnd()); return 0;
+  }
   if (verb === 'list') { for (const r of store.rulings.filter(x => !x.decided)) say(`${r.id} #${r.item} ${r.feature || '(no feature)'} ${r.deadline ? `auto ${r.deadline} → (${r.rec})` : 'never'} — ${r.q}`); return 0; }
   if (verb === 'render') { render(); say(mdP); return 0; }
-  say('usage: owner-queue <park|decide|list|render|tick> ...'); return 64;
+  say('usage: owner-queue <park|decide|list|digest|render|tick> ...'); return 64;
 }
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

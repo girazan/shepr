@@ -77,7 +77,8 @@ writeMarker(COMMON, 'rg-coord', { role: 'coordinator', milestone: 'M53', goal: '
 check('coordinator with marker goal G142: its worklog -> 0', run('Read', 'tmp/worklogs/G142-hds.md', 'coordinator', {}, 'rg-coord').code === 0);
 { const r = run('Read', 'tmp/worklogs/G7-x.md', 'coordinator', {}, 'rg-coord');
   check('coordinator with marker goal G142: another worklog -> 2, names G142', r.code === 2 && /G142/.test(r.err)); }
-check('coordinator Write src/ -> 0 (no write row for the coordinator)', run('Write', 'src/a.js', 'coordinator', { content: 'x' }).code === 0);
+// v0.11: there IS a write row now — the Coordinator writes tmp/ and .orch/ only.
+check('coordinator Write src/ -> 2 (the v0.11 write row)', run('Write', 'src/a.js', 'coordinator', { content: 'x' }).code === 2);
 check('coordinator Read outside the repo -> 2', spawnSync('node', [HOOK], { input: JSON.stringify({ session_id: 's', cwd: PROJ, tool_name: 'Read', tool_input: { file_path: path.join(SCRATCH, 'elsewhere.js') } }), env: { ...process.env, USERPROFILE: FAKEHOME, HOME: FAKEHOME, ORCH_ROLE: 'coordinator' }, encoding: 'utf8' }).status === 2);
 
 // --- every refusal so far is labelled ADVISORY --------------------------------------
@@ -118,5 +119,15 @@ put('tmp/worklogs/G8-noheader.md', 'goal: x\nmetric: y\n\nledger\n');
 check('worklog without a BRIEF line: first block is the BRIEF', run('Edit', 'tmp/worklogs/G8-noheader.md', 'dev', { old_string: 'metric: y', new_string: 'metric: z' }).code === 2 && run('Edit', 'tmp/worklogs/G8-noheader.md', 'dev', { old_string: 'ledger', new_string: 'ledger 2' }).code === 0);
 check('all audit lines still carry label ADVISORY', audit().every(a => a.label === 'ADVISORY' && a.action === 'role-guardrail'));
 
+// --- v0.11: the Coordinator writes nothing but tmp/ and .orch/ -------------------------
+check('coordinator: Write to src/ refused, names the tmp//.orch rule',
+  run('Write', 'src/a.cs', 'coordinator', { content: 'x' }).code === 2);
+check('coordinator: the refusal tells it to dispatch instead',
+  /Coordinator books the work, a Dev does it/.test(run('Write', 'src/a.cs', 'coordinator', { content: 'x' }).err));
+check('coordinator: Edit on a worklog allowed', run('Edit', 'tmp/worklogs/G1-x.md', 'coordinator', { old_string: 'a', new_string: 'b' }).code === 0);
+check('coordinator: Write to .orch/ allowed', run('Write', '.orch/board.json', 'coordinator', { content: '{}' }).code === 0);
+check('coordinator: Write to docs/adr refused (not tmp, not .orch)', run('Write', 'docs/adr/0001-x.md', 'coordinator', { content: 'x' }).code === 2);
+check('dev is untouched by the coordinator row', run('Write', 'src/a.cs', 'dev', { content: 'x' }).code === 0);
+check('coordinator write refusal is audited ADVISORY', (run('Write', 'src/b.cs', 'coordinator', { content: 'x' }), last().label === 'ADVISORY' && last().verdict === 'BLOCK'));
 module.exports = { run, cfg, put, audit, last, check, CONTRACT, COMMON, PROJ, LOCK, writeMarker };
 if (require.main === module) { console.log(`\n${pass}/${pass + fail} pass`); process.exit(fail ? 1 : 0); }

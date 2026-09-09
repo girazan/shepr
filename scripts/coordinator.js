@@ -306,6 +306,33 @@ function sweepPlan({ prs = [], branches = [], merged = [], issues = [], now = Da
   return { closePRs, deleteBranches, listOnly, untriaged: untriaged(issues) };
 }
 
+// --- v0.11: event-driven wake (firstmate's zero-token watcher) ----------------------
+// A tick on a timer pays tokens for every quiet interval; last night's fleet ticked
+// through hours where nothing moved. `wait` blocks INSIDE the script — no tokens — and
+// returns the moment the fleet actually changes. The comparison is pure and testable;
+// only the poll loop touches the world.
+const SETTLED = /^(idle|done|blocked)$/;
+function snapshot({ agents = [], rulings = [], reviews = 0 } = {}) {
+  return {
+    agents: Object.fromEntries(agents.map(a => [a.name || a.pane_id || '?', a.agent_status || '?'])),
+    rulings: Object.fromEntries(rulings.map(r => [r.id, r.decided ? (r.decided.opt || 'decided') : 'open'])),
+    reviews,
+  };
+}
+// First change wins; a settled lane outranks a ruling, which outranks a new manifest.
+function wakeReason(prev, now) {
+  for (const [n, s] of Object.entries(now.agents)) {
+    const was = prev.agents[n];
+    if (was === undefined) return `${n} joined the fleet`;
+    if (was !== s && SETTLED.test(s)) return `${n} ${was} -> ${s}`;
+  }
+  for (const n of Object.keys(prev.agents)) if (!(n in now.agents)) return `${n} left the fleet`;
+  for (const [id, st] of Object.entries(now.rulings)) if (prev.rulings[id] === 'open' && st !== 'open') return `ruling ${id} decided (${st})`;
+  if (now.reviews > prev.reviews) return `review manifest landed (${prev.reviews} -> ${now.reviews})`;
+  return null;
+}
+function sleepSync(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+
 // --- main -------------------------------------------------------------------------
 function parseArgs(argv) {
   const pos = [], opt = {};
@@ -455,6 +482,37 @@ function main(argv, deps = {}) {
       stdout(r.ruling + '\n');
       return r.ok ? 0 : 2; // 2 = research first
     },
+    wait() {
+      const timeout = Number(opt.timeout || (cfg.fleet && cfg.fleet.waitTimeoutSeconds) || 1800) * 1000;
+      const poll = Math.max(5, Number(opt.poll || (cfg.fleet && cfg.fleet.waitPollSeconds) || 20)) * 1000;
+      const listCmd = (cfg.fleetContext && cfg.fleetContext.listCmd) || 'herdr agent list';
+      const read = () => {
+        let agents = [], rulings = [], reviews = 0;
+        try {
+          const out = deps.fleetList ? deps.fleetList() : sh(cwd, listCmd.split(' ')[0], listCmd.split(' ').slice(1));
+          const j = JSON.parse(out);
+          agents = (j.result && j.result.agents) || j.agents || [];
+        } catch {}
+        try { rulings = JSON.parse(fs.readFileSync(path.join(cwd, '.orch', 'owner-queue.json'), 'utf8')).rulings || []; } catch {}
+        try { reviews = fs.readdirSync(path.join(cwd, 'docs', 'reviews')).filter(f => /\.md$/.test(f)).length; } catch {}
+        return snapshot({ agents, rulings, reviews });
+      };
+      const nap = deps.sleep || sleepSync;
+      // ONE clock: reading `started` from `now` while elapsed came from deps.clock made
+      // elapsed negative forever and the watcher never timed out.
+      const clock = deps.clock || Date.now;
+      const started = clock();
+      let prev = read();
+      for (;;) {
+        const elapsed = clock() - started;
+        if (elapsed >= timeout) { stdout(`wake: timeout after ${Math.round(elapsed / 1000)}s · fleet ${Object.keys(prev.agents).length} · nothing moved\n`); return 0; }
+        nap(Math.min(poll, timeout - elapsed));
+        const cur = read();
+        const why = wakeReason(prev, cur);
+        if (why) { stdout(`wake: ${why} · after ${Math.round((clock() - started) / 1000)}s\n`); return 0; }
+        prev = cur;
+      }
+    },
     sweep() {
       const idleDays = Number(opt['idle-days'] || (cfg.board && cfg.board.sweepIdleDays) || 14);
       let prs = [], branches = [], merged = [], issues = [], def = 'main';
@@ -497,10 +555,10 @@ function main(argv, deps = {}) {
       return 0;
     },
   };
-  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet|anchor G<n>|sweep [--apply] [--idle-days N]> …\n'); return 1; }
+  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet|anchor G<n>|sweep [--apply] [--idle-days N]|wait [--timeout S] [--poll S]> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = { EVIDENCE, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
-  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES };
+  noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };
