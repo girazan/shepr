@@ -55,12 +55,16 @@ the integration branch remains the path for everything else and for
 1. Focus per /shepr:go; lanes branch FROM `origin/autopilot/<date>`, not main.
 2. Lane → draft PR against **base `autopilot/<date>`** (`gh pr create --base`).
    A PR opened against main by mistake: `gh pr edit <n> --base autopilot/<date>`.
-3. Gate: ship.md's three legs + Codex on numerics (launch, watch with
-   `scripts/codex-watch.js` — CRLF-safe, one event per file — post verdict,
-   ledger). FAIL → fix round per the review ladder (cap 3) or park.
+3. Gate: ship.md's three legs, plus a SECOND-FAMILY review on numerics **only when
+   `models.review-alt` is configured** (a non-Claude reviewer, e.g. `codex`; launch,
+   watch with `scripts/codex-watch.js` — CRLF-safe, one event per file — post
+   verdict, ledger). No `review-alt` = that leg does not exist; run the three legs
+   and say so, never spawn a reviewer the contract does not name.
+   FAIL → fix round per the review ladder (cap 3) or park.
 4. Merge: `gh pr merge <n> --squash --delete-branch` (allowed only because
    the base matches `mergeBases`; the project's merge-evidence gate still
-   checks Suite/Metric/Baseline/Closes). Squash title = `#<n> <title> | Codex r<k> PASS`.
+   checks Suite/Metric/Baseline/Closes). Squash title = `#<n> <title>`, plus
+   ` | <alt> r<k> PASS` when a second-family review ran.
 5. Measure on the new tip: the goal's metric probe (settle ×2, certify ×2,
    RTF where the goal says). Record the number in the worklog. Boots go
    through the MAIN lock, serially — parallel boots starve each other.
@@ -87,9 +91,9 @@ the integration branch remains the path for everything else and for
 1. Handoff block (done · next action · entry phase · blockers + owners).
 2. `tmp/OWNER-QUEUE.md`: every parked decision as a/b/c with the evidence pointer.
 3. Open (draft) the review PR `autopilot/<date> → main` whose body lists every
-   merged PR with its Codex verdict link and the tip measurement. The
-   operator merges it (one click) or reverts one commit on the branch
-   (`git revert <sha>` is theirs) and merges.
+   merged PR with its review verdict link (second-family, when one ran) and the
+   tip measurement. The operator merges it (one click) or reverts one commit
+   on the branch (`git revert <sha>` is theirs) and merges.
 4. Push notification with the tip number and the queue length.
 5. `.orch/autopilot.json` → `stoppedAt`, `reason`.
 

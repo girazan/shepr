@@ -1,6 +1,6 @@
 {
   "name": "shepr",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "shepr \u2014 the shepherd for agent work: the human decides once, in a contract; agents plan, build and review; every 'done' is recomputed from git before it counts. Contract-gated shipping, review manifests a hook verifies, your favourite skills at every stage \u2014 none of them trusted with the gate.",
   "author": {
     "name": "girazan"

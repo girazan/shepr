@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.2 — 2026-09-09
+
+### Changed
+- **The autopilot gate no longer hardcodes a Codex leg.**  step 3 said "three legs + Codex on numerics" unconditionally, so a project with no  was told to spawn a reviewer its contract never names. The second-family review is now conditional on  being configured, and the squash-title suffix names whichever reviewer actually ran.
+
 ## 0.12.1 — 2026-09-09
 
 **Breaking: one name per level.** The vocabulary had four collisions — `C1` and `M49` were the same milestone under two prefixes; an identifier's number sometimes meant a GitHub id and sometimes a position, unmarked; "goal" and "objective" are English synonyms one level apart; and `skills/milestone` used "objective" for two different things in one file.
