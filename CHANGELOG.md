@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.12.0 — 2026-09-09
+## 0.12.1 — 2026-09-09
 
 **Breaking: one name per level.** The vocabulary had four collisions — `C1` and `M49` were the same milestone under two prefixes; an identifier's number sometimes meant a GitHub id and sometimes a position, unmarked; "goal" and "objective" are English synonyms one level apart; and `skills/milestone` used "objective" for two different things in one file.
 
@@ -9,6 +9,9 @@
 - **The `C<n>` prefix is retired.** `pick`, `tickScope`, `session-marker --ids`, `ORCH_IDS` and `milestoneRank` accept `M<n>` only. A scope of `C1` is refused, not silently accepted.
 - **`add-milestone` titles with the next ordinal**, one past the highest `M<n> ·` on the board, and takes a `<statement>` rather than an `<objective>` — the milestone's own one-line statement is not the outcome layer.
 - **objective → outcome.** Label `orch:objective` → `orch:outcome`; verb `add-objective` → `add-outcome`; flag `--objective` → `--outcome`. `O<n>` keys are unchanged. Progress stays outcomes closed over outcomes total.
+
+### Added
+- **`board-gh retitle-milestone <milestone#|title> --title "M<n> · <statement>"`** — the migration surface the rename needs. Director-only, journaled, idempotent, and it refuses a title without the ordinal or an ordinal another milestone already carries.
 
 ### Migration (a board created before 0.12)
 1. Retitle each milestone to `M<ordinal> · <statement>` (`board-gh retitle-milestone`), ordinals starting at 1 in program order.

@@ -142,7 +142,7 @@ function main(argv, deps = {}) {
   const env = deps.env || process.env;
   const { pos, opt } = parseArgs(argv);
   const verb = pos[0];
-  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|close-milestone|sync-features|add-outcome|add-goal [--objective O<n>]|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
+  if (!verb) { stdout('usage: board-gh <init|milestones|add-milestone|retitle-milestone|close-milestone|sync-features|add-outcome|add-goal [--outcome O<n>]|add-item|move|set-status|set-blocker|clear-blocker|attention|done --goal G<n> --step S<j> <item#>|close-goal|read> …\n'); return 1; }
   if (verb === 'init') return require('./board-gh-init').init({ pos, opt, cwd, gh, stdout });
   const cfg = loadCfg(cwd);
   if (!cfg) { stdout('board-gh: no usable .orch/board.json — run `/shepr:board init` first.\n'); return 1; }

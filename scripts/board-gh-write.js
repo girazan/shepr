@@ -27,7 +27,7 @@ function write(ctx) {
   // ADVISORY — ORCH_ROLE is env, not a credential — but the refusal runs
   // before replay and before any remote call.
   const goalMove = verb === 'move' && /^G\d+$/i.test(pos[0] || '');
-  if ((verb === 'add-milestone' || verb === 'close-milestone' || verb === 'add-outcome' || goalMove) && env && env.ORCH_ROLE) {
+  if ((verb === 'add-milestone' || verb === 'retitle-milestone' || verb === 'close-milestone' || verb === 'add-outcome' || goalMove) && env && env.ORCH_ROLE) {
     say(`${verb}: refused — ${goalMove ? 'goal priority' : 'milestones'} are the Director's (ORCH_ROLE=${env.ORCH_ROLE})`); return 1;
   }
   const R = `repos/${cfg.owner}/${cfg.repo}`;
@@ -105,7 +105,9 @@ function write(ctx) {
     closeIssue(d) { if (issueNode(d.issue).state === 'CLOSED') return 'closed'; gh.rest('PATCH', `${R}/issues/${d.issue}`, { state: 'closed' }); return 'closed'; },
     createMilestone(d) {
       const all = pagedMilestones(gh, R, 'all');
-      const hit = all.find(m => m.title === d.title || m.title === `M${m.number} · ${d.title}`);
+      // Already there as the bare statement (created, crash before the retitle) or
+      // already carrying an ordinal — either way this create is satisfied.
+      const hit = all.find(m => m.title === d.title || m.title.replace(/^M\d+ · /, '') === d.title);
       if (hit) return hit.number;
       return gh.rest('POST', `${R}/milestones`, { title: d.title, description: d.description, due_on: d.due_on }).number;
     },
@@ -344,6 +346,21 @@ Outcome under the milestone. Goals attach as sub-issues. Close only when done: i
         assignee: opt.you ? gh.rest('GET', 'user').login : null };
       const issue = runAction('add-item', lane, args);
       say(String(issue));
+    },
+    // Migration surface (0.12): put the PROGRAM ORDINAL on a milestone titled under an
+    // older grammar. Director-only, journaled, idempotent on the finished title.
+    'retitle-milestone'() {
+      const which = pos[0]; const title = str('title');
+      if (!which || !title) throw new Error('usage: retitle-milestone <milestone#|title> --title "M<n> · <statement>"');
+      if (!/^M\d+ · \S/.test(title)) throw new Error('--title must read "M<n> · <statement>" — n is the program ordinal, not the GitHub number');
+      const all = pagedMilestones(gh, R, 'all');
+      const m = all.find(x => String(x.number) === String(which) || x.title === which);
+      if (!m) { say(`retitle-milestone: no milestone "${which}" — run \`board-gh milestones\``); return 1; }
+      if (m.title === title) { say(`${title.split(' · ')[0]} (already)`); return 0; }
+      const clash = all.find(x => x.number !== m.number && x.title === title);
+      if (clash) { say(`retitle-milestone: #${clash.number} already carries "${title}" — pick another ordinal`); return 1; }
+      runAction('retitle-milestone', 'M?', { number: m.number, title });
+      say(`#${m.number} → ${title}`);
     },
     'add-milestone'() {
       const statement = pos[0]; const target = str('target'); const done = str('done');
