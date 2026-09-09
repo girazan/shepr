@@ -105,7 +105,7 @@ Fresh pane per step: `impl-G<k>-S<j>` never outlives its step.
 Inconclusive rounds count for nothing; `R` still advances.
 
 A hand-back containing `NEEDS RULING:` is not a fail round: the
-coordinator turns it into ONE queue entry — `node "<plugin>/scripts/owner-queue.js" park --item <issue#> --q "…" --opt a="…" --opt b="…" --rec <letter> --evidence <pointer>` — with its own recommendation, and moves to the next runnable step. The item's Feature decides whether the entry auto-resolves (`rulings.autoResolveHours`) or waits for the operator; the assistant carries it to the phone. `attention` stays for halts (LIVENESS, kill, stall), never for questions with options. At the start of every tick run `owner-queue.js tick`; an `AUTO` line is a ruling to act on, a `WARN` line goes into the tick report.
+coordinator turns it into ONE queue entry — `node "<plugin>/scripts/owner-queue.js" park --item <issue#> --q "…" --opt a="…" --opt b="…" --rec <letter> --evidence <pointer>` — with its own recommendation, and moves to the next runnable step. The item's Feature decides whether the entry auto-resolves (`rulings.autoResolveHours`) or waits for the operator; send the digest (below) so the phone sees it. `attention` stays for halts (LIVENESS, kill, stall), never for questions with options. At the start of every tick run `owner-queue.js tick`; an `AUTO` line is a ruling to act on, a `WARN` line goes into the tick report.
 
 ## 5. Verdict
 
@@ -134,10 +134,26 @@ A tick on a timer pays tokens for every quiet interval. End each tick with
 `<c> wait [--timeout <s>] [--poll <s>]`: it blocks inside the script — no
 tokens, no turn — and returns the moment the fleet actually changes, printing
 one `wake: <reason>` line. It wakes on a lane reaching `idle`/`done`/`blocked`,
-a lane joining or leaving, a ruling being decided, or a new review manifest;
-otherwise on its timeout (default 1800 s, `fleet.waitTimeoutSeconds`). Under
-`/loop` the interval becomes a fallback, not the driver: the wake line is the
-first thing the next tick reports.
+a lane joining or leaving, a ruling being decided, a new review manifest, or a
+phone command (`wake: phone: <text>`); otherwise on its timeout (default 1800 s,
+`fleet.waitTimeoutSeconds`). Under `/loop` the interval becomes a fallback, not
+the driver: the wake line is the first thing the next tick reports. "Lane" means
+a name in `.git/orch/fleet.json` — `herdr agent list` shows every pane in every
+workspace, including this one, so an unfiltered watcher run in the background
+woke on its own turn ending. Run it in the background (`run_in_background`) so
+the harness re-invokes the tick when it returns.
+
+## The phone (v0.11.1 — no assistant pane)
+
+`telegram.js poll` runs as one detached process per repo (`.orch/telegram-poll.pid`
+is the lock; a second instance exits 75). It turns button presses into decisions
+by itself and appends the four allowlisted texts to `.orch/assistant-inbox.jsonl`,
+which `wait` reports as `wake: phone: <text>`. On that wake: `stop` → finish the
+step in flight, open no lane, write the handoff; `focus G<n>` → that goal is
+`named` for the next pick; `status` / `digest now` →
+`node "<plugin>/scripts/owner-queue.js" digest | node "<plugin>/scripts/telegram.js" digest`.
+Send that same digest whenever you park a ruling. If the poller is not running,
+start it: `node "<plugin>/scripts/telegram.js" poll > tmp/telegram-poll.log` detached.
 
 ## Every tick ends
 

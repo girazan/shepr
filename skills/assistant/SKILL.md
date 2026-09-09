@@ -13,6 +13,12 @@ description: >
 
 # /shepr:assistant — one tick
 
+> **Deprecated 0.11.1.** Not needed once `telegram.js poll` runs detached: it
+> decides rulings and relays phone texts on its own, and the Coordinator's
+> `wait` wakes on `.orch/assistant-inbox.jsonl` and sends the digest itself
+> (see `go/coordinator.md` → The phone). Keep this pane only for the ≤25-line
+> progress card with milestone bars; nothing else here is unique any more.
+
 Premise (owner-confirmed 2026-09-06): the operator decides from the phone
 or not at all; the assistant only carries. Sonnet-tier is enough. Every
 tick is idempotent — run it twice and nothing is posted twice.

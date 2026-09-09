@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.1 — 2026-09-09
+
+The assistant pane retires. After 0.11.0 the ruling round-trip was already script-only (poller → owner queue → coordinator wake); what the pane still did — send the digest, relay four phone texts, restart the poller — is now the coordinator's `wait` and the poller itself. One fewer model in the loop, and the pane that spawned the duplicate poller is gone.
+
+### Fixed
+- **`coordinator wait` woke on itself.** It snapshotted `herdr agent list` unfiltered — every pane in every workspace, including the caller — so run in the background it fired the instant the coordinator's own turn ended (`coordinator working -> done`), and again for panes in other workspaces. It now watches only names in `.git/orch/fleet.json`; no roster means no lane wakes (rulings, manifests, the phone and the timeout still fire).
+- **Two Telegram pollers fought** (`Conflict: terminated by other getUpdates`, 572 lines in one log) after a restart left the old one alive. `telegram.js poll` now takes `.orch/telegram-poll.pid` as a lock: a live pid there exits 75 without touching Telegram; a dead one is replaced.
+
+### Added
+- `wait` also wakes on a new line in `.orch/assistant-inbox.jsonl` (`wake: phone: <text>`), so `stop`, `status`, `focus G<n>` and `digest now` from Telegram reach the coordinator with no pane in between.
+- `telegram digest` reads stdin when `--file` is absent: `owner-queue digest | telegram digest` is one command.
+
+### Deprecated
+- `/shepr:assistant`. Only the ≤25-line progress card with milestone bars has no replacement; keep the pane if you want that, drop it otherwise.
+
 ## 0.11.0 — 2026-09-09
 
 Three ideas adopted from [kunchenguid/firstmate](https://github.com/kunchenguid/firstmate) (MIT), which solves the fleet-mechanics problem shepr deliberately does not. Not a fork: its work model is a markdown backlog with ship/scout tasks, which contradicts the milestone/objective/goal board. Comparison written up in the pertasim repo.

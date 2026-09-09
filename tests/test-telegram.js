@@ -62,6 +62,16 @@ queue.main(['park', '--item', '8', '--q', 'vent?', '--opt', 'a=live', '--opt', '
   calls.length = 0;
   check('digest splits at 4000 chars', (await run(['digest', '--file', path.join(ROOT, 'digest.md')])) === 0 && calls.filter(c => c.method === 'sendMessage').length === 3);
 
+  // v0.11.1: one poller per repo. A live pid in .orch/telegram-poll.pid refuses a second instance (75); a dead one is replaced.
+  const pidP = path.join(ROOT, '.orch', 'telegram-poll.pid');
+  fs.writeFileSync(pidP, '4242\n');
+  calls.length = 0;
+  check('poll refuses to start while another live poller holds the pid file, without touching Telegram', (await run(['poll', '--once'], { isAlive: p => p === 4242 })) === 75 && /POLL-BUSY pid 4242/.test(out) && calls.length === 0);
+  check('a dead pid is replaced by this process', (await run(['poll', '--once'], { isAlive: () => false })) === 0 && fs.readFileSync(pidP, 'utf8').trim() === String(process.pid));
+  // digest with no --file reads stdin, so `owner-queue digest | telegram digest` is one command
+  calls.length = 0;
+  check('digest reads stdin when --file is absent', (await run(['digest'], { stdin: () => 'from stdin' })) === 0 && calls.at(-1).body.text === 'from stdin');
+
   console.log(`\n${pass}/${pass + fail} pass`);
   process.exit(fail ? 1 : 0);
 })();

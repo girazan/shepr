@@ -345,7 +345,7 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   const snap = C.snapshot({ agents: [{ name: 'impl-a', agent_status: 'working' }, { pane_id: 'p9', agent_status: 'idle' }],
     rulings: [{ id: 'R1', decided: null }, { id: 'R2', decided: { opt: 'b' } }], reviews: 2 });
   check('snapshot: names from name or pane_id, rulings open vs decided, review count',
-    JSON.stringify(snap) === JSON.stringify({ agents: { 'impl-a': 'working', p9: 'idle' }, rulings: { R1: 'open', R2: 'b' }, reviews: 2 }));
+    JSON.stringify(snap) === JSON.stringify({ agents: { 'impl-a': 'working', p9: 'idle' }, rulings: { R1: 'open', R2: 'b' }, reviews: 2, inbox: [] }));
   const base = { agents: { a: 'working', b: 'working' }, rulings: { R1: 'open' }, reviews: 1 };
   check('wakeReason: nothing moved -> null', C.wakeReason(base, JSON.parse(JSON.stringify(base))) === null);
   check('wakeReason: working -> working elsewhere is not a wake', C.wakeReason(base, { ...base, agents: { a: 'working', b: 'working' } }) === null);
@@ -359,7 +359,8 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
 
   // the verb: fake clock + fake sleep + a fleet that settles on the 3rd read
   const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo-wait');
-  fs.mkdirSync(path.join(CWD, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(CWD, '.git', 'orch'), { recursive: true });
+  fs.writeFileSync(path.join(CWD, '.git', 'orch', 'fleet.json'), JSON.stringify({ delegates: [{ name: 'impl-a', status: 'running' }] })); // the roster: wait only watches these
   let t = 0, reads = 0;
   const states = ['working', 'working', 'idle'];
   const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), config: {}, now: 0,
@@ -374,6 +375,39 @@ check('outOfScope: commits touching another domain, evidence and unmatched files
   out = '';
   code = C.main(['wait', '--poll', '10', '--timeout', '25'], { ...deps, stdout: s => { out += s; }, fleetList: () => { throw new Error('herdr down') } });
   check('main wait: an unreachable fleet does not crash the watcher', code === 0 && /timeout/.test(out));
+}
+
+// --- v0.11.1: wait filters to the roster, ignores itself, and hears the phone -----------
+{
+  const roster = ['impl-a', 'impl-b'];
+  const snap = C.snapshot({ agents: [{ name: 'coordinator', agent_status: 'working' }, { name: 'impl-a', agent_status: 'working' }, { pane_id: 'w1Z:p1', agent_status: 'working' }], roster, inbox: ['status'] });
+  check('snapshot: with a roster, only roster names survive (caller and other workspaces dropped)', JSON.stringify(Object.keys(snap.agents)) === '["impl-a"]' && snap.inbox.length === 1);
+  check('snapshot: an empty roster keeps no lanes (nothing to wait for)', Object.keys(C.snapshot({ agents: [{ name: 'coordinator', agent_status: 'working' }], roster: [] }).agents).length === 0);
+  const base = { agents: { 'impl-a': 'working' }, rulings: {}, reviews: 0, inbox: ['focus G1'] };
+  check('wakeReason: a new phone line wakes with its text', C.wakeReason(base, { ...base, inbox: ['focus G1', 'status'] }) === 'phone: status');
+  check('wakeReason: an unchanged inbox is not a wake', C.wakeReason(base, JSON.parse(JSON.stringify(base))) === null);
+
+  const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo-wait2');
+  fs.mkdirSync(path.join(CWD, '.git', 'orch'), { recursive: true });
+  fs.mkdirSync(path.join(CWD, '.orch'), { recursive: true });
+  fs.writeFileSync(path.join(CWD, '.git', 'orch', 'fleet.json'), JSON.stringify({ delegates: [{ name: 'impl-a', status: 'running' }] }));
+  let t = 0, reads = 0;
+  // read 1: all working · read 2: the caller settles (must NOT wake) · read 3: impl-a settles
+  const frames = [
+    [{ name: 'coordinator', agent_status: 'working' }, { name: 'impl-a', agent_status: 'working' }, { pane_id: 'w1Z:p1', agent_status: 'working' }],
+    [{ name: 'coordinator', agent_status: 'done' }, { name: 'impl-a', agent_status: 'working' }, { pane_id: 'w1Z:p1', agent_status: 'idle' }],
+    [{ name: 'coordinator', agent_status: 'done' }, { name: 'impl-a', agent_status: 'idle' }],
+  ];
+  const deps = { cwd: CWD, commonDir: path.join(CWD, '.git'), config: {}, now: 0, clock: () => t, sleep: ms => { t += ms; },
+    fleetList: () => JSON.stringify({ result: { agents: frames[Math.min(reads++, frames.length - 1)] } }) };
+  let out = ''; let code = C.main(['wait', '--poll', '10', '--timeout', '600'], { ...deps, stdout: s => { out += s; } });
+  check('main wait: the caller and another workspace settling do not wake; the roster lane does', code === 0 && /^wake: impl-a working -> idle · after 20s/.test(out));
+  t = 0; reads = 0; out = '';
+  const inboxP = path.join(CWD, '.orch', 'assistant-inbox.jsonl');
+  code = C.main(['wait', '--poll', '10', '--timeout', '600'], { ...deps, stdout: s => { out += s; },
+    fleetList: () => JSON.stringify({ result: { agents: frames[0] } }),
+    sleep: ms => { t += ms; if (t === 20000) fs.appendFileSync(inboxP, JSON.stringify({ ts: 'x', text: 'digest now', by: 'telegram' }) + '\n'); } });
+  check('main wait: a phone command landing in the inbox wakes with its text', code === 0 && /^wake: phone: digest now · after 20s/.test(out));
 }
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);

@@ -9,8 +9,10 @@
 //   rulings                                post every open ruling not yet posted
 //   poll [--once]                          drain button presses → owner-queue decide … --by telegram;
 //                                          relay allowlisted texts (stop|status|focus G<n>|digest now) to
-//                                          .orch/assistant-inbox.jsonl; --once = one getUpdates then exit
-//   digest --file <path>                   post a digest file (≤ 4000 chars per message, split)
+//                                          .orch/assistant-inbox.jsonl (coordinator `wait` wakes on them);
+//                                          --once = one getUpdates then exit. One instance per repo:
+//                                          .orch/telegram-poll.pid is the lock (exit 75 if another is alive)
+//   digest [--file <path>]                 post a digest (file or stdin; ≤ 4000 chars per message, split)
 //
 // Only the allowlisted chat can press buttons or be heard; anything else
 // is dropped and audited. Offsets persist in .orch/telegram-offset.json.
@@ -71,9 +73,12 @@ async function main(argv, deps = {}) {
   const fmt = html ? { parse_mode: 'HTML' } : {};
   if (verb === 'send') { for (const c of chunk(argv.slice(1).filter(a => a !== '--html').join(' '))) await send(c, fmt); say('sent'); return 0; }
   if (verb === 'digest') {
+    // --file <path>, or stdin: `owner-queue digest | telegram digest` is one command.
     const fi = argv.indexOf('--file'); const p = fi >= 0 ? argv[fi + 1] : null;
-    if (!p || !fs.existsSync(p)) { say('usage: telegram digest --file <path> [--html]'); return 64; }
-    for (const c of chunk(fs.readFileSync(p, 'utf8'))) await send(c, fmt);
+    if (p && !fs.existsSync(p)) { say('usage: telegram digest [--file <path>] [--html]  (no --file = stdin)'); return 64; }
+    const text = p ? fs.readFileSync(p, 'utf8') : (deps.stdin ? deps.stdin() : fs.readFileSync(0, 'utf8'));
+    if (!text.trim()) { say('digest: nothing to send'); return 0; }
+    for (const c of chunk(text)) await send(c, fmt);
     say('digest sent'); return 0;
   }
   if (verb === 'ruling' || verb === 'rulings') {
@@ -85,6 +90,15 @@ async function main(argv, deps = {}) {
   }
   if (verb === 'poll') {
     const once = argv.includes('--once');
+    // One poller per repo: Telegram serves getUpdates to a single consumer, and two instances
+    // fight ("Conflict: terminated by other getUpdates") until one dies. The pid file is the lock.
+    // ponytail: a recycled pid reads as busy; delete the pid file by hand if that ever bites.
+    const pidP = path.join(root, '.orch', 'telegram-poll.pid');
+    const isAlive = deps.isAlive || (pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } });
+    let other = 0; try { other = Number(fs.readFileSync(pidP, 'utf8').trim()); } catch {}
+    if (other && other !== process.pid && isAlive(other)) { say(`POLL-BUSY pid ${other} already polling this repo; stop it first or leave it be`); return 75; }
+    fs.mkdirSync(path.dirname(pidP), { recursive: true });
+    fs.writeFileSync(pidP, `${process.pid}\n`);
     let offset = 0; try { offset = JSON.parse(fs.readFileSync(offP, 'utf8')).offset || 0; } catch {}
     const queue = deps.queue || require('./owner-queue');
     let rounds = 0;

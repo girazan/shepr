@@ -312,14 +312,20 @@ function sweepPlan({ prs = [], branches = [], merged = [], issues = [], now = Da
 // returns the moment the fleet actually changes. The comparison is pure and testable;
 // only the poll loop touches the world.
 const SETTLED = /^(idle|done|blocked)$/;
-function snapshot({ agents = [], rulings = [], reviews = 0 } = {}) {
+// `roster` (lane names from fleet.json) is the fleet: `herdr agent list` is every pane in
+// every workspace, including the caller, whose own turn-end (working -> done) woke the
+// watcher the instant it was backgrounded. No roster = no lanes to wait for.
+// `inbox` is the phone: lines the Telegram poller relayed to .orch/assistant-inbox.jsonl.
+function snapshot({ agents = [], rulings = [], reviews = 0, inbox = [], roster = null } = {}) {
+  const lanes = roster ? agents.filter(a => roster.includes(a.name)) : agents;
   return {
-    agents: Object.fromEntries(agents.map(a => [a.name || a.pane_id || '?', a.agent_status || '?'])),
+    agents: Object.fromEntries(lanes.map(a => [a.name || a.pane_id || '?', a.agent_status || '?'])),
     rulings: Object.fromEntries(rulings.map(r => [r.id, r.decided ? (r.decided.opt || 'decided') : 'open'])),
     reviews,
+    inbox,
   };
 }
-// First change wins; a settled lane outranks a ruling, which outranks a new manifest.
+// First change wins; a settled lane outranks a ruling, which outranks a new manifest, which outranks the phone.
 function wakeReason(prev, now) {
   for (const [n, s] of Object.entries(now.agents)) {
     const was = prev.agents[n];
@@ -329,6 +335,7 @@ function wakeReason(prev, now) {
   for (const n of Object.keys(prev.agents)) if (!(n in now.agents)) return `${n} left the fleet`;
   for (const [id, st] of Object.entries(now.rulings)) if (prev.rulings[id] === 'open' && st !== 'open') return `ruling ${id} decided (${st})`;
   if (now.reviews > prev.reviews) return `review manifest landed (${prev.reviews} -> ${now.reviews})`;
+  if ((now.inbox || []).length > (prev.inbox || []).length) return `phone: ${now.inbox[now.inbox.length - 1]}`;
   return null;
 }
 function sleepSync(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
@@ -487,15 +494,17 @@ function main(argv, deps = {}) {
       const poll = Math.max(5, Number(opt.poll || (cfg.fleet && cfg.fleet.waitPollSeconds) || 20)) * 1000;
       const listCmd = (cfg.fleetContext && cfg.fleetContext.listCmd) || 'herdr agent list';
       const read = () => {
-        let agents = [], rulings = [], reviews = 0;
+        let agents = [], rulings = [], reviews = 0, inbox = [];
         try {
           const out = deps.fleetList ? deps.fleetList() : sh(cwd, listCmd.split(' ')[0], listCmd.split(' ').slice(1));
           const j = JSON.parse(out);
           agents = (j.result && j.result.agents) || j.agents || [];
         } catch {}
+        const roster = (readRoster(commonDir).delegates || []).map(d => d.name);
         try { rulings = JSON.parse(fs.readFileSync(path.join(cwd, '.orch', 'owner-queue.json'), 'utf8')).rulings || []; } catch {}
         try { reviews = fs.readdirSync(path.join(cwd, 'docs', 'reviews')).filter(f => /\.md$/.test(f)).length; } catch {}
-        return snapshot({ agents, rulings, reviews });
+        try { inbox = fs.readFileSync(path.join(cwd, '.orch', 'assistant-inbox.jsonl'), 'utf8').split(/\r?\n/).filter(Boolean).map(l => { try { return JSON.parse(l).text; } catch { return l; } }); } catch {}
+        return snapshot({ agents, rulings, reviews, inbox, roster });
       };
       const nap = deps.sleep || sleepSync;
       // ONE clock: reading `started` from `now` while elapsed came from deps.clock made
