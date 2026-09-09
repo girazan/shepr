@@ -20,7 +20,7 @@ const SANTA = 'You have NOT seen any other review. Your job is to find problems,
 const REPLY = 'Reply with exactly one `verdict: pass|fail|inconclusive` line, then `reasons:` (each citing done: or the step\'s accept:), then `notes:`.';
 
 function git(cwd, args) {
-  return execFileSync('git', ['-C', cwd, '-c', 'core.quotePath=false', ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).toString();
+  return execFileSync('git', ['-C', cwd, '-c', 'core.quotePath=false', ...args], { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).toString();
 }
 function defaultSpawn({ model, brief, cwd, env, template }) {
   // `review.spawn`: a string template for every model, or an object keyed by
@@ -40,7 +40,7 @@ function roster(commonDir, fn) {
   });
 }
 function buildBrief(o) {
-  const parts = [`# GATE REVIEW ${o.id}`, `range: ${o.base}..${o.head}`, o.paths ? `paths: ${o.paths.join(' ')}` : 'paths: (plan round — no diff)', '', SANTA, REPLY, ''];
+  const parts = [`# GATE REVIEW ${o.id}`, `range: ${o.base}..${o.head}`, ...(o.diffFrom && o.diffFrom !== o.base ? [`diff: ${o.diffFrom}..${o.head} (commits merged from the default branch excluded)`] : []), o.paths ? `paths: ${o.paths.join(' ')}` : 'paths: (plan round — no diff)', '', SANTA, REPLY, ''];
   for (const r of o.rubrics) parts.push(`## RUBRIC ${r.name}.md@${r.h}`, r.body, '');
   parts.push('## BRIEF', o.brief, '');
   if (o.accept) parts.push('## STEP', `step: ${o.step}`, `accept: ${o.accept}`, '');
@@ -97,6 +97,17 @@ function main(argv, deps = {}) {
   if (ch.miss) { say(`shepr review: ${ch.miss}`); return 1; }
   const base = plan ? fz.base : (ch.chain.length ? ch.chain[ch.chain.length - 1].head : fz.base);
   const head = plan ? fz.base : g(['rev-parse', 'HEAD']).trim();
+  // Diff content starts at merge-base(default branch, head) when that descends from base: a lane that merged
+  // the default branch in is reviewed on what it adds, not on everything it merged. range:/manifest keep base..head.
+  let diffFrom = base;
+  if (!plan) {
+    try {
+      let def = 'origin/main';
+      try { def = g(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim() || def; } catch {}
+      const mb = g(['merge-base', def, head]).trim();
+      if (mb && mb !== base) { g(['merge-base', '--is-ancestor', base, mb]); diffFrom = mb; }
+    } catch { diffFrom = base; }
+  }
   // Rubrics: review-goal always; the step's recipe rubric (or spec for a plan round) when the file exists.
   const rubricDir = deps.rubricDir || path.join(__dirname, '..', 'skills', 'go', 'recipes');
   const names = ['review-goal', ...(plan ? ['spec'] : item.recipe ? [item.recipe] : [])].filter(nm => fs.existsSync(path.join(rubricDir, `${nm}.md`)));
@@ -110,7 +121,7 @@ function main(argv, deps = {}) {
   const rubricLine = rubrics.map(r => `${r.name}.md@${r.h}`).join(' + ');
   const handoffRel = plan ? `tmp/handoffs/M${M}.G${goalN}-architect.md` : `tmp/handoffs/M${M}.G${goalN}.${stepArg}-dev.md`;
   const handoff = fs.existsSync(path.join(root, handoffRel)) ? fs.readFileSync(path.join(root, handoffRel), 'utf8') : `(no handoff at ${handoffRel})`;
-  const diff = plan ? '' : g(['diff', `${base}..${head}`, '--', ...fz.paths, ...L.EVIDENCE.map(e => `:(exclude)${e.replace(/\/\*\*$/, '')}`)]);
+  const diff = plan ? '' : g(['diff', `${diffFrom}..${head}`, '--', ...fz.paths, ...L.EVIDENCE.map(e => `:(exclude)${e.replace(/\/\*\*$/, '')}`)]);
   // A plan round reviews the plan section, which the Architect commits after the ROUTE line — so the worklog at HEAD, while range stays base..base.
   const planText = plan ? g(['show', `HEAD:${fz.path}`]) : '';
   // Board: item In review at launch (spec §4 item Status row).
@@ -133,7 +144,7 @@ function main(argv, deps = {}) {
       catch (e) { testOut = `exit ${e.status == null ? '?' : e.status}\n${e.stdout || ''}${e.stderr || ''}`; }
       testOut = testOut.split(/\r?\n/).slice(-200).join('\n');
     }
-    const brief = buildBrief({ id, base, head, paths: plan ? null : fz.paths, rubrics, brief: goal.brief, step: unit, accept: item ? item.accept : null, handoff, plan, planText, testOut, diff });
+    const brief = buildBrief({ id, base, head, diffFrom, paths: plan ? null : fz.paths, rubrics, brief: goal.brief, step: unit, accept: item ? item.accept : null, handoff, plan, planText, testOut, diff });
     const slotHeader = `review: ${id}\nrubric: ${rubricLine}\nrange: ${base}..${head}\n${plan ? '' : `paths: ${fz.paths.join(' ')}\n`}`;
     const env = { ...process.env, ORCH_ROLE: 'reviewer' }; // explicit child env — a spawner sets it (spec §3)
     const spawn = deps.spawn || defaultSpawn;

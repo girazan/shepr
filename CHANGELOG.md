@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3 — 2026-09-09
+
+Patch from the C2 coordinator, tested and adopted.
+
+### Fixed
+- **A lane that merged the default branch in was reviewed on everything it merged.** `shepr review` now starts the diff at `merge-base(default branch, head)` when that commit descends from the frozen `base:`; the brief says so on a `diff:` line. `range:` in the manifest and slot files stays `base..head`, so the evidence chain and the lint are unchanged. A lane cut from an autopilot base (merge-base not descending from `base:`) keeps the old behaviour.
+- **`shepr review` died on a large diff** (`maxBuffer` exceeded). Git calls now allow 64 MB.
+
 ## 0.11.2 — 2026-09-09
 
 ### Changed

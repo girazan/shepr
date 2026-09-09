@@ -165,5 +165,19 @@ const D3 = commit({ 'src/core/c.js': '1\n' }, 'dev core');
   const r3 = run(['G142', '--step', 'S2'], { gh: fakeBoard(142, 'hmi').gh, cfg: { ...cfgOf(MODELS), review: { spawn: { '*': 'claude -p --model {model}', gpt: 'codex exec -' } } }, spawn: a => { tplCalls.push(a.template); return 'verdict: pass\nreasons:\nnotes:\n'; } });
   check('per-model spawn template object reaches the spawner', r3.code === 0 && tplCalls[0] && tplCalls[0].gpt === 'codex exec -');
 }
+// --- 0.11.3: a lane that merged the default branch is reviewed on what it adds ------------------
+{
+  const lane = g('rev-parse', '--abbrev-ref', 'HEAD').trim();
+  const B = g('rev-parse', 'HEAD').trim(); // frozen base: the ROUTE commit descends from it
+  commit({ 'tmp/worklogs/G300-m.md': `BRIEF\ngoal: merged\nmetric: m\ndone: d\ndomains: hmi\nfeature: hmi\nkill: k\n\nROUTE: lane:G300 · hmi · decide:ai · ship:commit · tier:mid · base:${B} · review:single · approved:auto · 2026-09-09\n` }, 'route merged');
+  g('checkout', '-qb', 'side', B); const M1 = commit({ 'src/hmi/m.js': 'main\n' }, 'main moves'); g('update-ref', 'refs/remotes/origin/main', M1);
+  g('checkout', '-q', lane); commit({ 'src/hmi/l.js': 'lane\n' }, 'lane work'); g('merge', '-q', '--no-edit', 'refs/remotes/origin/main'); const H = g('rev-parse', 'HEAD').trim();
+  const { gh } = fakeBoard(300, 'hmi');
+  const r = run(['G300', '--step', 'S1'], { gh }); if (r.code !== 0) console.log('G300 OUT:', r.out);
+  const a = r.calls[0]; const man = fs.readFileSync(path.join(REPO, 'docs', 'reviews', 'M53.G300.S1.R1.md'), 'utf8');
+  check('merged-main lane: the diff holds the lane\'s change and not the merged-in main change', r.code === 0 && /\+lane/.test(a.brief) && !/\+main/.test(a.brief));
+  check('merged-main lane: brief names the diff start at merge-base; manifest range stays base..head', a.brief.includes(`diff: ${M1}..${H}`) && man.includes(`range: ${B}..${H}\n`));
+  g('update-ref', '-d', 'refs/remotes/origin/main'); g('branch', '-qD', 'side');
+}
 console.log(`\n${pass}/${n} pass`);
 process.exit(fail ? 1 : 0);
