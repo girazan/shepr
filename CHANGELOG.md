@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0 — 2026-09-10
+
+**Names are derived, not typed, and the roster is reconciled against the live fleet.** Five naming schemes were in use at once for a single role, because the launch path accepted a name as a parameter and never called the pane-name function that already existed, was exported, and was already tested. Nothing anywhere compared the roster to the fleet, so rows outlived their panes and nothing ever collected them.
+
+### Added
+- **`reconcile()` — the roster against the live pane list, as a pure function.** Returns intended actions and performs none: `drop` for a row whose pane is gone, `rename` for a pane whose label left its row, `orphan` for a shepr-named pane with no row. An orphan is reported and NEVER adopted — two Coordinators share one fleet, and claiming a pane would let one steal the other's lane.
+- **The tick corrects what it reports**, before it reads capacity, so the ceiling stops counting delegates that no longer exist. One audit line per action. A drop for a row already gone writes nothing, and a failed rename does not strand the actions behind it, so a tick is safe to run every time rather than as an occasional sweep.
+- **`fleet.laneCap` — each Coordinator's own allowance of the shared ceiling**, so one milestone cannot take every slot while another starves. A number covers every Coordinator; an object keyed by milestone gives each its own. Whichever ceiling binds first stops the dispatch and `capacity.bound` names which.
+- **`coordinator lane-cap <n>|none --milestone M<n>`** — a Coordinator sets its OWN cap and no other's, reports the current one when given no value, and audits the change. A Director-set number is preserved under `*`, so the first Coordinator to set its own does not silently uncap the rest.
+- **`docs/fleet-layout.md`** — the workspace and tab convention in one place: a fleet workspace is `M<n> - <Repo>` and a workspace without the milestone prefix holds non-fleet work; the repository name comes from the GitHub remote, not the local directory; the Coordinator sits on its own tab; the pane label never repeats the milestone.
+
+### Fixed
+- **The context alarm had never fired, for any session, ever.** Its matcher was `/"usage":\s*\{[^{}]*\}/`, and a real usage object carries nested members, so the brace class could not match one. Transcripts are parsed as JSONL now. Measured: zero `orch-ctxmon` markers had ever been written, against 3166 for the fleet poller.
+- **Dispatch derives the delegate name** from the role, goal and step it was given, and the name parameter is gone from the launch interface — a caller that supplies one is refused rather than quietly obeyed. The row records the pane id in `agentId`, the slot the roster shape had always defined and nothing had ever populated, plus the `ids` a lane cap counts over.
+- **A drop matches the pane, never the name.** Both Coordinators derive the same name for the same goal and step against one shared roster, and the drop is decided before the pane listing is taken, so a name match let one delete the row the other had just written — leaving a running pane that is never adopted and no longer counts against capacity. A drop with no identifier is reported and never performed.
+- **`owner-queue list` says `no open rulings`** instead of printing nothing, which was indistinguishable from the script failing.
+
 ## 0.12.2 — 2026-09-09
 
 ### Changed
