@@ -254,6 +254,52 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
   check('launch CLI still requires --step for a dev, whose grammar carries one',
     cli(['launch', '--role', 'dev', '--goal', 'G999', '--milestone', 'M53', '--tier', 'mid', '--vehicle', 'loop', '--brief', BRIEF]) === 1 && /--step <value> is required for role dev/.test(out));
 }
+
+// reconcile: roster vs the live fleet, reported and never performed.
+{
+  const pane = (name, id) => ({ name, pane_id: id, agent_status: 'idle' });
+  const row = (name, over = {}) => ({ name, lane: 'G1', vehicle: 'herdr', status: 'running', agentId: null, ...over });
+  const R = (delegates, agents) => C.reconcile({ roster: { delegates }, agents });
+
+  check('an empty roster and an empty fleet produce no actions',
+    R([], []).length === 0 && C.reconcile({}).length === 0);
+  check('a row whose pane is still there is not drift',
+    R([row('impl-G1-S1', { agentId: 'p1' })], [pane('impl-G1-S1', 'p1')]).length === 0);
+  check('a row whose pane is gone is reported as a row to drop',
+    JSON.stringify(R([row('impl-G1-S1', { agentId: 'p1' })], [pane('other', 'p9')])) ===
+      JSON.stringify([{ action: 'drop', name: 'impl-G1-S1', agentId: 'p1', why: 'pane gone' }]));
+  // The roster is authoritative: the pane is what is wrong.
+  check('a pane whose label drifted is reported as a rename, naming both labels',
+    JSON.stringify(R([row('impl-G1-S2', { agentId: 'p1' })], [pane('impl-hand-typed', 'p1')])) ===
+      JSON.stringify([{ action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S2' }]));
+  // Two coordinators share one fleet; adopting would let one steal the other's lane.
+  const orphans = R([], [pane('impl-G9-S1', 'p2'), pane('arch-G9', 'p3'), pane('coord', 'p4')]);
+  check('a shepr-shaped pane with no row is reported as an orphan, never adopted',
+    orphans.length === 3 && orphans.every(a => a.action === 'orphan') && !orphans.some(a => /adopt|claim/.test(a.action)));
+  check('a pane the Director named is not this coordinator business',
+    R([], [pane('coordinator-c1', 'p5'), pane('scratch', 'p6')]).length === 0);
+  check('a delegate that occupies no pane is never drift',
+    R([row('impl-G1-S1', { vehicle: 'loop' }), row('rev-G1', { vehicle: 'subprocess', status: 'done' })], []).length === 0);
+  // Rows written before agentId existed carry none; match them by name or every
+  // one of them reports as a drop the first time reconcile runs.
+  check('a row with no pane id matches its pane by name',
+    R([row('impl-r58')], [pane('impl-r58', 'p7')]).length === 0 &&
+    R([row('impl-r58')], [pane('impl-tvt', 'p7')])[0].action === 'drop');
+  check('reconcile mutates neither the roster nor the fleet it is given', (() => {
+    const rs = { delegates: [row('impl-G1-S1', { agentId: 'p1' })] }; const ag = [pane('drifted', 'p1')];
+    const before = JSON.stringify([rs, ag]);
+    C.reconcile({ roster: rs, agents: ag });
+    return JSON.stringify([rs, ag]) === before;
+  })());
+
+  // The Director sees it: a tick carries the report.
+  const t = C.tick({ goals: [], contract: { domains: {} }, lsFiles: [], audit: [], now: T0,
+    roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] }, agents: [pane('impl-hand-typed', 'p1')] });
+  check('a tick surfaces the drift report to the Director',
+    Array.isArray(t.drift) && t.drift.length === 1 && t.drift[0].action === 'rename');
+  check('a tick with no fleet listing reports no drift rather than dropping every row',
+    (C.tick({ goals: [], contract: { domains: {} }, lsFiles: [], audit: [], now: T0, roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] } }).drift || []).length === 0);
+}
 // main: proposal prints the five lines and audits them; launch wires through.
 {
   const SCRATCH = path.join(__dirname, 'scratch-coordinator'); const CWD = path.join(SCRATCH, 'repo');

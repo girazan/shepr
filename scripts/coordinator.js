@@ -116,17 +116,52 @@ function pulseAge(audit, now = Date.now(), scope = null) {
   return last ? Math.round((now - Date.parse(last.ts)) / 60000) : null;
 }
 
+// --- reconcile: the roster vs the live fleet (spec: herdr naming) -------------------
+// A pane name shepr could have written: the three delegate grammars in
+// delegate.md. Every other pane in the fleet belongs to the Director or to
+// another tool and is none of this coordinator's business.
+const SHEPR_PANE = /^(impl-.|arch-.|coord$)/;
+// Pure by design: it reads nothing and performs nothing, so the whole decision
+// matrix is testable without a fleet. The caller performs the actions.
+// Rows match panes by agentId, falling back to the name for rows written before
+// agentId was recorded — without the fallback every legacy row reports as a drop
+// on the first run. A delegate that occupies no pane (loop, subprocess) is never
+// drift; its row is a different kind of fossil and reconcile does not own it.
+function reconcile({ roster, agents = [] } = {}) {
+  const rows = (((roster || {}).delegates) || []).filter(d => d.vehicle === 'herdr');
+  const byId = new Map(agents.filter(a => a.pane_id).map(a => [a.pane_id, a]));
+  const byName = new Map(agents.filter(a => a.name).map(a => [a.name, a]));
+  const actions = []; const claimed = new Set();
+  for (const d of rows) {
+    const pane = d.agentId ? byId.get(d.agentId) : byName.get(d.name);
+    if (!pane) { actions.push({ action: 'drop', name: d.name, agentId: d.agentId || null, why: 'pane gone' }); continue; }
+    claimed.add(pane.pane_id);
+    // The roster is authoritative: something renamed the pane, or started it by hand.
+    if (pane.name !== d.name) actions.push({ action: 'rename', agentId: pane.pane_id, from: pane.name || null, to: d.name });
+  }
+  // Reported, never adopted: two coordinators share one fleet, and the pane may
+  // be the other one's, the Director's, or a lane started by hand.
+  for (const a of agents) {
+    if (claimed.has(a.pane_id) || !SHEPR_PANE.test(a.name || '')) continue;
+    actions.push({ action: 'orphan', agentId: a.pane_id || null, name: a.name, why: 'no roster row; never adopted' });
+  }
+  return actions;
+}
+
 const roundOf = p => Number((/\.R(\d+)\.md$/.exec(p) || [0, 0])[1]);
 const verdictOf = text => (/^verdict:\s*(pass|fail|inconclusive)/m.exec(text || '') || [])[1] || null;
 
 // One tick, one action (spec §7 step 2). Pure: every source is an input.
-function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null }) {
+function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null, agents = null }) {
   const filesOf = g => filesOfDomains(lsFiles, contract, domainsOf(g.brief));
   const { pick: g, skipped } = pick({ goals, named, filesOf, scope });
   // Capacity is the FLEET's, not the Coordinator's: scoped Coordinators share
   // one roster and race for the same slots; the loser reports wait-capacity.
   const cap = capacityCheck(roster, capacity);
-  const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, stale: pulseAge(audit, now, scope) };
+  // Reported only: a tick tells the Director what disagrees and corrects nothing.
+  // No fleet listing means no evidence, which is not the same as every pane gone.
+  const drift = agents ? reconcile({ roster, agents }) : [];
+  const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, drift, stale: pulseAge(audit, now, scope) };
   if (!g) return { action: 'idle', ...out };
   const sessions = audit.filter(e => e.by === 'pulse' && e.goal === g.lane && e.action === 'dispatch').length;
   out.kill = killCheck(g.brief, sessions);
@@ -400,6 +435,16 @@ function tickScope(opt, commonDir, env) {
   const marker = readMarker(commonDir, sid);
   return (marker && marker.milestone) || null;
 }
+// The live fleet, or null when herdr cannot be reached. null is "no evidence",
+// which reconcile must not confuse with "every pane is gone".
+function readAgents(cwd, cfg, deps) {
+  const listCmd = (cfg.fleetContext && cfg.fleetContext.listCmd) || 'herdr agent list';
+  try {
+    const out = deps.fleetList ? deps.fleetList() : sh(cwd, listCmd.split(' ')[0], listCmd.split(' ').slice(1));
+    const j = JSON.parse(out);
+    return (j.result && j.result.agents) || j.agents || null;
+  } catch { return null; }
+}
 function readRoster(commonDir) { try { return JSON.parse(fs.readFileSync(path.join(commonDir, 'orch', 'fleet.json'), 'utf8')); } catch { return { delegates: [] }; } }
 function worklogPath(cwd, lane) {
   const dir = path.join(cwd, 'tmp', 'worklogs');
@@ -433,7 +478,7 @@ function main(argv, deps = {}) {
       let t;
       try {
         t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope,
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope, agents: readAgents(cwd, cfg, deps),
           worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
           manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
       } catch (e) { stdout(`tick: ${e.message}
@@ -608,5 +653,5 @@ function main(argv, deps = {}) {
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, delegateName, launch,
+module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, reconcile, tick, tickScope, main, proposal, paneName, delegateName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };
