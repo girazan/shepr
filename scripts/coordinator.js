@@ -96,6 +96,22 @@ function killCheck(brief, sessions) {
 
 // v2 §3.1: the counted-status predicate is exactly {reserved, running}.
 const COUNTED = new Set(['reserved', 'running']);
+
+// Each Coordinator's own allowance, and each Coordinator SETS its own (Director
+// ruling, 2026-09-10: "let the coord decide based on their needs"). A plain
+// number covers every one of them; an object keyed by milestone gives each its
+// own. Absent means no cap, which is exactly today's behaviour — and 0 is a cap
+// of zero, not an absent one, so the read is `??` and never `||`.
+function laneCapFor(cfg, scope) {
+  const v = ((cfg || {}).fleet || {}).laneCap;
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  // `*` is the shared number, kept when one Coordinator sets its own entry over
+  // a Director-set number: setting yours must not uncap everybody else.
+  if (scope && v[scope] != null) return v[scope];
+  return v['*'] ?? null;
+}
+
 // Two ceilings, and whichever binds first stops the dispatch. `capacity` is the
 // repository's and is shared, so the coordinator with ready work takes every
 // slot and the other starves; `laneCap` is this coordinator's own allowance,
@@ -570,7 +586,7 @@ function main(argv, deps = {}) {
       let t;
       try {
         t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, laneCap: (cfg.fleet && cfg.fleet.laneCap) ?? null, now, scope,
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, laneCap: laneCapFor(cfg, scope), now, scope,
           worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
           manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
       } catch (e) { stdout(`tick: ${e.message}
@@ -582,11 +598,36 @@ function main(argv, deps = {}) {
       stdout(JSON.stringify({ ...t, drift: actions.filter(a => !done.has(a)), corrected: corrected.performed, driftFailed: corrected.failed }, null, 2) + '\n');
       return 0;
     },
+    // A Coordinator's own allowance, written by that Coordinator. It edits only
+    // its own key, because two of them share this file and the other's cap is
+    // not its to change; a shared number already in place is expanded into
+    // per-coordinator entries rather than overwritten, so setting one does not
+    // silently uncap everyone else.
+    'lane-cap'() {
+      const scope = opt.milestone || scopeOrNull(opt, commonDir, deps);
+      if (!scope || !/^M\d+$/.test(scope)) { stdout('lane-cap: --milestone M<n> is required — a Coordinator sets only its own cap\n'); return 1; }
+      const cfgPath = path.join(cwd, '.claude', 'orch.json');
+      let raw = {};
+      try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch { /* first entry */ }
+      const fleet = raw.fleet || (raw.fleet = {});
+      if (typeof fleet.laneCap === 'number') fleet.laneCap = { '*': fleet.laneCap };
+      const caps = fleet.laneCap && typeof fleet.laneCap === 'object' ? fleet.laneCap : (fleet.laneCap = {});
+      const val = pos[1];
+      if (val === undefined) { stdout(`lane-cap ${scope}: ${laneCapFor(raw, scope) ?? 'none'} (fleet ceiling ${fleet.capacity ?? 6})\n`); return 0; }
+      if (val === 'none') delete caps[scope];
+      else if (/^\d+$/.test(val)) caps[scope] = Number(val);
+      else { stdout(`lane-cap: the cap is a whole number of lanes, or "none"; got ${val}\n`); return 1; }
+      fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
+      fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
+      appendAudit(cwd, { by: 'lane-cap', milestone: scope, cap: caps[scope] ?? null, ts: new Date(now).toISOString() });
+      stdout(`lane-cap ${scope}: ${caps[scope] ?? 'none'}\n`);
+      return 0;
+    },
     proposal() {
       const need = ['goal', 'step', 'item', 'text', 'role', 'tier', 'recipe', 'task', 'domains', 'ship', 'review'];
       for (const k of need) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`proposal: --${k} <value> is required\n`); return 1; }
       const p = { ...opt, domains: opt.domains.split(/[,\s]+/).filter(Boolean), fails: Number(opt.fails || 0), kill: typeof opt.kill === 'string' ? opt.kill : null,
-        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6, { scope: scopeOrNull(opt, commonDir, deps), laneCap: (cfg.fleet && cfg.fleet.laneCap) ?? null }) };
+        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6, { scope: scopeOrNull(opt, commonDir, deps), laneCap: laneCapFor(cfg, scopeOrNull(opt, commonDir, deps)) }) };
       const lines = proposal(p).split('\n');
       appendAudit(cwd, { by: 'dispatch', mode: opt.mode === 'auto' ? 'auto' : 'confirm', goal: opt.goal, step: opt.step, lines });
       stdout(lines.join('\n') + '\n');
@@ -738,10 +779,10 @@ function main(argv, deps = {}) {
       return 0;
     },
   };
-  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet|anchor G<n>|sweep [--apply] [--idle-days N]|wait [--timeout S] [--poll S]> …\n'); return 1; }
+  if (!verb || !VERBS[verb]) { stdout('usage: coordinator <tick [G<n>] [--milestone M<n>] [--no-pulse]|proposal|launch|fix-round|verdict|pr-text|milestone-summary|fleet|lane-cap [<n>|none] --milestone M<n>|anchor G<n>|sweep [--apply] [--idle-days N]|wait [--timeout S] [--poll S]> …\n'); return 1; }
   return VERBS[verb]() || 0;
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, reconcile, applyDrift, tick, tickScope, main, proposal, paneName, delegateName, launch,
+module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, reconcile, applyDrift, laneCapFor, tick, tickScope, main, proposal, paneName, delegateName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };

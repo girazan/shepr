@@ -357,6 +357,54 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
   check('a row with no ids counts against the fleet but against no coordinator',
     C.capacityCheck({ delegates: [d('M1.G1.S1'), { name: 'legacy', status: 'running' }] }, 6, { scope: 'M1', laneCap: 2 }).mine === 1);
 
+  // The cap is each Coordinator's own: one number covers every one of them, an
+  // object gives each its own, and a Coordinator sets only its own entry.
+  check('laneCapFor: a plain number is every coordinator allowance',
+    C.laneCapFor({ fleet: { laneCap: 2 } }, 'M1') === 2 && C.laneCapFor({ fleet: { laneCap: 2 } }, 'M9') === 2);
+  check('laneCapFor: an object gives each coordinator its own',
+    C.laneCapFor({ fleet: { laneCap: { M1: 2, M2: 4 } } }, 'M2') === 4);
+  check('laneCapFor: a coordinator with no entry of its own has no cap',
+    C.laneCapFor({ fleet: { laneCap: { M1: 2 } } }, 'M2') === null &&
+    C.laneCapFor({ fleet: {} }, 'M1') === null && C.laneCapFor({}, null) === null);
+  check('laneCapFor: zero is a cap, not an absent one',
+    C.laneCapFor({ fleet: { laneCap: { M1: 0 } } }, 'M1') === 0);
+
+  // A Coordinator sets its OWN entry and no other's.
+  {
+    const fs2 = require('fs');
+    const S = path.join(__dirname, `scratch-coordinator-lanecap-${process.pid}`);
+    fs2.mkdirSync(path.join(S, '.claude'), { recursive: true });
+    process.on('exit', () => { try { fs2.rmSync(S, { recursive: true, force: true }); } catch {} });
+    const cfgPath = path.join(S, '.claude', 'orch.json');
+    fs2.writeFileSync(cfgPath, JSON.stringify({ fleet: { capacity: 6 } }));
+    const readCfg = () => JSON.parse(fs2.readFileSync(cfgPath, 'utf8'));
+    let out = '';
+    const cli = args => { out = ''; return C.main(args, { cwd: S, commonDir: path.join(S, '.git'), stdout: x => { out += x; }, now: T0 }); };
+
+    check('lane-cap sets this coordinator entry and leaves the shared ceiling alone',
+      cli(['lane-cap', '2', '--milestone', 'M1']) === 0 &&
+      readCfg().fleet.laneCap.M1 === 2 && readCfg().fleet.capacity === 6);
+    check('lane-cap adds a second coordinator entry without touching the first',
+      cli(['lane-cap', '3', '--milestone', 'M2']) === 0 &&
+      readCfg().fleet.laneCap.M1 === 2 && readCfg().fleet.laneCap.M2 === 3);
+    check('lane-cap with no value reports the current one rather than changing it',
+      cli(['lane-cap', '--milestone', 'M1']) === 0 && /^lane-cap M1: 2 /.test(out) && readCfg().fleet.laneCap.M1 === 2);
+    check('lane-cap clears an entry, restoring uncapped behaviour',
+      cli(['lane-cap', 'none', '--milestone', 'M2']) === 0 &&
+      C.laneCapFor(readCfg(), 'M2') === null && readCfg().fleet.laneCap.M1 === 2);
+    check('lane-cap refuses a value that is not a whole number, naming why',
+      cli(['lane-cap', 'two', '--milestone', 'M1']) === 1 && /whole number/.test(out) && readCfg().fleet.laneCap.M1 === 2);
+    // Without a milestone there is no "own" entry to set.
+    check('lane-cap refuses to guess which coordinator it is',
+      cli(['lane-cap', '2']) === 1 && /--milestone/.test(out));
+    // A number written by the Director covers everyone; a Coordinator setting
+    // its own must not silently delete the others' cap.
+    fs2.writeFileSync(cfgPath, JSON.stringify({ fleet: { capacity: 6, laneCap: 3 } }));
+    check('lane-cap over a shared number keeps it for every other coordinator',
+      cli(['lane-cap', '2', '--milestone', 'M1']) === 0 &&
+      C.laneCapFor(readCfg(), 'M1') === 2 && C.laneCapFor(readCfg(), 'M2') === 3);
+  }
+
   const t = C.tick({ goals: [{ lane: 'G5', status: 'ready', items: [{ issue: 1, step: 'S1' }], brief: '', milestone: { title: 'M1 · a milestone' } }],
     contract: { domains: {} }, lsFiles: [], audit: [], roster, capacity: 6, laneCap: 2, scope: 'M1', now: T0,
     worklogOf: () => 'ROUTE: lane:G5 mid', manifestsOf: () => [] });
