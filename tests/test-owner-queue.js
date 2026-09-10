@@ -77,6 +77,12 @@ check('store persisted', JSON.parse(fs.readFileSync(path.join(ROOT, '.orch', 'ow
   o2 = '';
   main(['digest'], { root: path.join(__dirname, 'scratch-owner-queue-empty'), cfg: off, board, now: T0, stdout: s => { o2 += s + '\n'; } });
   check('digest on an empty queue says so', o2.trim() === 'no open rulings');
+  o2 = '';
+  main(['list'], { root: path.join(__dirname, 'scratch-owner-queue-empty'), cfg: off, board, now: T0, stdout: s => { o2 += s + '\n'; } });
+  check('list on an empty queue says so instead of printing nothing', o2.trim() === 'no open rulings');
+  o2 = '';
+  main(['list'], { root: ROOT2, cfg: off, board, now: T0, stdout: s => { o2 += s + '\n'; } });
+  check('list still prints an open ruling', /^R1 #77 /.test(o2.trim()));
 }
 console.log(`\n${pass}/${pass + fail} pass`);
 process.exit(fail ? 1 : 0);

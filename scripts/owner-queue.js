@@ -130,7 +130,12 @@ function main(argv, deps = {}) {
     }
     say(out.join('\n').trimEnd()); return 0;
   }
-  if (verb === 'list') { for (const r of store.rulings.filter(x => !x.decided)) say(`${r.id} #${r.item} ${r.feature || '(no feature)'} ${r.deadline ? `auto ${r.deadline} → (${r.rec})` : 'never'} — ${r.q}`); return 0; }
+  if (verb === 'list') {
+    const open = store.rulings.filter(x => !x.decided);
+    if (!open.length) { say('no open rulings'); return 0; }
+    for (const r of open) say(`${r.id} #${r.item} ${r.feature || '(no feature)'} ${r.deadline ? `auto ${r.deadline} → (${r.rec})` : 'never'} — ${r.q}`);
+    return 0;
+  }
   if (verb === 'render') { render(); say(mdP); return 0; }
   say('usage: owner-queue <park|decide|list|digest|render|tick> ...'); return 64;
 }
