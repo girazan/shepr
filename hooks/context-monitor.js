@@ -37,10 +37,21 @@ try {
   tail = buf.toString('utf8');
 } catch { process.exit(0); }
 
-const usages = tail.match(/"usage":\s*\{[^{}]*\}/g);
-if (!usages || !usages.length) process.exit(0);
-const last = usages[usages.length - 1];
-const num = k => { const m = last.match(new RegExp('"' + k + '":\\s*(\\d+)')); return m ? parseInt(m[1], 10) : 0; };
+// Parse whole JSONL lines. A usage object carries nested members
+// (output_tokens_details, server_tool_use, cache_creation) and an iterations[]
+// array, so the old /"usage":\s*\{[^{}]*\}/ never matched a real transcript and
+// this hook silently never fired. The tail is a byte slice, so its first line is
+// usually torn — an unparseable line is skipped, not fatal.
+let last = null;
+for (const line of tail.split('\n')) {
+  if (!line.includes('"usage"')) continue;
+  let rec;
+  try { rec = JSON.parse(line); } catch { continue; }
+  const u = rec && rec.message && rec.message.usage;
+  if (u) last = u;
+}
+if (!last) process.exit(0);
+const num = k => Number(last[k]) || 0;
 const ctx = num('input_tokens') + num('cache_read_input_tokens') + num('cache_creation_input_tokens');
 if (!ctx) process.exit(0);
 
