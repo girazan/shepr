@@ -169,6 +169,9 @@ const FIVE = [
 check('proposal is exactly five lines in the pinned shape', C.proposal(P) === FIVE);
 check('proposal without a kill line says so', /kill: —$/.test(C.proposal({ ...P, kill: null })));
 check('paneName is impl-G<k>-S<j>', C.paneName('G142', 'S2') === 'impl-G142-S2');
+// A resident delegate (architect, or a dev held across a whole goal) carries no
+// step. Interpolating an absent one produced the literal "impl-G142-undefined".
+check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneName('G142') === 'impl-G142' && C.paneName('G142', null) === 'impl-G142');
 
 // --- launch: roster + herdr commands -------------------------------------------
 // ASSUMPTION CORRECTED (Task 3 Step 0 — herdr --help / agent start --help /
@@ -197,6 +200,59 @@ check('paneName is impl-G<k>-S<j>', C.paneName('G142', 'S2') === 'impl-G142-S2')
   C.launch({ commonDir: COMMON, cwd: REPO, name: 'impl-G142-S2', role: 'dev', milestone: 'M53', goal: 'G142', step: 'S2', tier: 'high', vehicle: 'loop', brief: BRIEF, exec, now: T0 + 60000 });
   const again = JSON.parse(fs.readFileSync(r.roster, 'utf8')).delegates.filter(x => x.name === 'impl-G142-S2');
   check('launch (loop): no herdr call; re-launch replaces the entry, never duplicates', calls.length === 0 && again.length === 1 && again[0].role === 'high' && again[0].vehicle === 'loop');
+  check('re-launching a herdr delegate as loop clears the pane id it used to hold', again[0].agentId === null);
+
+}
+// Derived naming, in its own roster: the checks below add delegates, and the
+// proposal suite downstream asserts an exact fleet count off the shared one.
+{
+  const SCRATCH = path.join(__dirname, `scratch-coordinator-naming-${process.pid}`);
+  const REPO = path.join(SCRATCH, 'repo'); const COMMON = path.join(REPO, '.git');
+  fs.mkdirSync(COMMON, { recursive: true });
+  process.on('exit', () => { try { fs.rmSync(SCRATCH, { recursive: true, force: true }); } catch {} });
+  const BRIEF = path.join(SCRATCH, 'brief.md'); fs.writeFileSync(BRIEF, 'TASK: x\n');
+  const calls = []; const exec = (cmd, args) => { calls.push([cmd, ...args]); return cmd === 'herdr' && args[0] === 'pane' ? 'pane-7\n' : ''; };
+
+  // The name is derived, never accepted. A caller-supplied name had been the
+  // only way to invent a scheme, and five of them grew that way.
+  const r = C.launch({ commonDir: COMMON, cwd: REPO, name: 'impl-whatever-i-like', role: 'dev', milestone: 'M53', goal: 'G777', step: 'S3', tier: 'mid', vehicle: 'herdr', brief: BRIEF, exec, now: T0 });
+  const rows = () => JSON.parse(fs.readFileSync(r.roster, 'utf8')).delegates;
+  check('launch derives the name from goal and step, ignoring one passed by the caller',
+    rows().some(x => x.name === 'impl-G777-S3') && !rows().some(x => x.name === 'impl-whatever-i-like'));
+  check('launch records the pane id in agentId, the slot v2 3.1 already defines for it',
+    (rows().find(x => x.name === 'impl-G777-S3') || {}).agentId === 'pane-7');
+  check('launch drives herdr with the derived name, not the one passed',
+    calls[1][3] === 'impl-G777-S3' && calls[2][3] === 'impl-G777-S3');
+
+  C.launch({ commonDir: COMMON, cwd: REPO, role: 'dev', milestone: 'M53', goal: 'G777', step: 'S4', tier: 'mid', vehicle: 'loop', brief: BRIEF, exec, now: T0 });
+  check('a delegate that occupies no pane records no pane id',
+    (rows().find(x => x.name === 'impl-G777-S4') || {}).agentId === null);
+
+  // Names are role-specific (delegate.md "Pane names"). A resident DEV with no
+  // step is impl-G<k>; an Architect is arch-G<k>; a Coordinator is coord.
+  calls.length = 0;
+  C.launch({ commonDir: COMMON, cwd: REPO, role: 'dev', milestone: 'M53', goal: 'G888', tier: 'high', vehicle: 'herdr', brief: BRIEF, exec, now: T0 });
+  check('a resident dev with no step is impl-G<k>', rows().some(x => x.name === 'impl-G888'));
+  check('the pane env omits an absent step rather than writing M53.G888.undefined',
+    calls[0].includes('ORCH_IDS=M53.G888'));
+  C.launch({ commonDir: COMMON, cwd: REPO, role: 'architect', milestone: 'M53', goal: 'G888', tier: 'high', vehicle: 'loop', brief: BRIEF, exec, now: T0 });
+  check('an architect is arch-G<k>, not impl-G<k>', rows().some(x => x.name === 'arch-G888'));
+  check('delegateName covers all three roles delegate.md pins',
+    C.delegateName('dev', 'G1', 'S2') === 'impl-G1-S2' && C.delegateName('architect', 'G1', 'S2') === 'arch-G1' && C.delegateName('coordinator', 'G1') === 'coord');
+
+  // The CLI: no positional name, and a stale invocation that still passes one
+  // is refused rather than quietly naming something else.
+  let out = '';
+  const cli = args => { out = ''; return C.main(args, { cwd: REPO, commonDir: COMMON, stdout: s => { out += s; }, exec, now: T0 }); };
+  check('launch CLI refuses a leftover pane-name argument, naming the reason',
+    cli(['launch', 'impl-old-style', '--role', 'dev', '--goal', 'G999', '--step', 'S1', '--milestone', 'M53', '--tier', 'mid', '--vehicle', 'loop', '--brief', BRIEF]) === 1 && /no longer an argument/.test(out));
+  check('launch CLI derives the name and prints it',
+    cli(['launch', '--role', 'dev', '--goal', 'G999', '--step', 'S1', '--milestone', 'M53', '--tier', 'mid', '--vehicle', 'loop', '--brief', BRIEF]) === 0 && out.split('\n')[0] === 'impl-G999-S1');
+  check('launch CLI accepts an architect with no step, named arch-G<k>',
+    cli(['launch', '--role', 'architect', '--goal', 'G999', '--milestone', 'M53', '--tier', 'high', '--vehicle', 'loop', '--brief', BRIEF]) === 0 && out.split('\n')[0] === 'arch-G999');
+  // A dropped --step must not silently demote a dev to the resident form.
+  check('launch CLI still requires --step for a dev, whose grammar carries one',
+    cli(['launch', '--role', 'dev', '--goal', 'G999', '--milestone', 'M53', '--tier', 'mid', '--vehicle', 'loop', '--brief', BRIEF]) === 1 && /--step <value> is required for role dev/.test(out));
 }
 // main: proposal prints the five lines and audits them; launch wires through.
 {

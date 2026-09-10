@@ -165,7 +165,17 @@ function proposal(p) {
     `${pad('caps')}fails ${p.fails}/3 · no-progress 2 · fleet ${p.fleet.count}/${p.fleet.capacity} · kill: ${p.kill || '—'}`,
   ].join('\n');
 }
-const paneName = (goal, step) => `impl-${goal}-${step}`;
+// Dev grammar (delegate.md): `impl-G<k>-S<j>` fresh per step, `impl-G<k>` for
+// a resident dev whose lifetime is the goal. Interpolating an absent step
+// produced the literal "impl-G142-undefined".
+const paneName = (goal, step) => (step ? `impl-${goal}-${step}` : `impl-${goal}`);
+// The one place a delegate's name is decided. Names are role-specific
+// (delegate.md "Pane names"): `arch-G<k>` for an Architect, `coord` for a
+// Coordinator, the Dev grammar above for everyone else.
+const delegateName = (role, goal, step) =>
+  role === 'architect' ? `arch-${goal}`
+    : role === 'coordinator' ? 'coord'
+      : paneName(goal, step);
 
 // Pane launch: roster entry (v2 §3.1) under the roster lock, and — herdr
 // only — the CLI calls. Under loop/native the skill spawns the Agent itself
@@ -177,25 +187,45 @@ const paneName = (goal, step) => `impl-${goal}-${step}`;
 // is plan 3's job: hooks/session-start.js materialises it from the pane's
 // ORCH_ROLE/ORCH_IDS env once Claude's own session_id exists — this script
 // never writes a marker file.
-function launch({ commonDir, cwd, name, role, milestone, goal, step, tier, vehicle, brief, exec, now }) {
+// The name is DERIVED here, never accepted. It used to be a parameter, and
+// delegateName()/paneName() — documented in two skills and two specs, and unit
+// tested — were never called on this path. That one missing call is how five
+// naming schemes came to coexist in one fleet. There is no `name` parameter to
+// override any more, and the CLI refuses a leftover one rather than ignoring
+// it, so a stale invocation fails loudly instead of naming something else.
+//
+// The pane id goes in `agentId`, the slot v2 §3.1 and delegate.md already
+// define as "<pane id>" and which nothing had ever populated; it is the one
+// identity a rename cannot break. A delegate with no pane leaves it null.
+//
+// ORDER MATTERS. The roster row is written after `pane split` (so it can carry
+// the id) but BEFORE `agent start`/`prompt`, because the two failure modes are
+// not symmetric: a row whose pane is gone is self-healing, since reconcile
+// drops it, while a pane with no row is not — reconcile reports an orphan and
+// never adopts one, by design, so it would leak a real pane forever.
+function launch({ commonDir, cwd, role, milestone, goal, step, tier, vehicle, brief, exec, now }) {
   const dir = path.join(commonDir, 'orch');
   fs.mkdirSync(dir, { recursive: true });
   const startedAt = new Date(now || Date.now()).toISOString();
   const roster = path.join(dir, 'fleet.json');
+  const name = delegateName(role, goal, step);
+  let agentId = null;
+  if (vehicle === 'herdr') {
+    const ids = [milestone, goal, step].filter(Boolean).join('.');
+    agentId = String(exec('herdr', ['pane', 'split', '--cwd', cwd || process.cwd(), '--env', `ORCH_ROLE=${role}`, '--env', `ORCH_IDS=${ids}`])).trim();
+  }
   withLock(path.join(dir, 'fleet.lock'), () => {
     let r = { delegates: [] };
     try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { /* first entry */ }
     r.delegates = (r.delegates || []).filter(d => d.name !== name);
-    r.delegates.push({ name, lane: goal, role: tier, vehicle, status: 'running', ownerSessionId: null, agentId: null, brief, createdAt: startedAt, lastSeen: startedAt });
+    r.delegates.push({ name, lane: goal, role: tier, vehicle, status: 'running', ownerSessionId: null, agentId, brief, createdAt: startedAt, lastSeen: startedAt });
     fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
   });
   if (vehicle === 'herdr') {
-    const ids = `${milestone}.${goal}.${step}`;
-    const paneId = String(exec('herdr', ['pane', 'split', '--cwd', cwd || process.cwd(), '--env', `ORCH_ROLE=${role}`, '--env', `ORCH_IDS=${ids}`])).trim();
-    exec('herdr', ['agent', 'start', name, '--kind', 'claude', '--pane', paneId]);
+    exec('herdr', ['agent', 'start', name, '--kind', 'claude', '--pane', agentId]);
     exec('herdr', ['agent', 'prompt', name, fs.readFileSync(brief, 'utf8')]);
   }
-  return { roster };
+  return { roster, name, agentId };
 }
 
 // No-progress detection, N = 2 (d.23): the last N hand-backs all had an empty
@@ -422,13 +452,20 @@ function main(argv, deps = {}) {
       stdout(lines.join('\n') + '\n');
       return 0;
     },
+    // No <pane name> argument: the name is derived from --role/--goal/--step.
+    // A caller that still passes one is refused rather than ignored, so a
+    // stale invocation fails loudly instead of naming something else.
+    // --step stays REQUIRED for a dev, whose grammar is impl-G<k>-S<j>: a
+    // typo'd or dropped --step must not silently become the resident form.
+    // Only the roles whose names carry no step may omit it.
     launch() {
-      const name = pos[1];
-      for (const k of ['role', 'goal', 'step', 'milestone', 'tier', 'vehicle', 'brief']) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`launch: --${k} <value> is required\n`); return 1; }
-      if (!name) { stdout('usage: launch <pane name> --role … --goal … --step … --milestone … --tier … --vehicle loop|herdr --brief <file>\n'); return 1; }
-      const r = launch({ commonDir, cwd, name, role: opt.role, milestone: opt.milestone, goal: opt.goal, step: opt.step, tier: opt.tier, vehicle: opt.vehicle, brief: opt.brief,
+      for (const k of ['role', 'goal', 'milestone', 'tier', 'vehicle', 'brief']) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`launch: --${k} <value> is required\n`); return 1; }
+      const STEPLESS = new Set(['architect', 'coordinator']);
+      if (!STEPLESS.has(opt.role) && (typeof opt.step !== 'string' || !opt.step)) { stdout(`launch: --step <value> is required for role ${opt.role}\n`); return 1; }
+      if (pos[1]) { stdout('launch: the pane name is derived from --role/--goal/--step and is no longer an argument; drop it\n'); return 1; }
+      const r = launch({ commonDir, cwd, role: opt.role, milestone: opt.milestone, goal: opt.goal, step: opt.step, tier: opt.tier, vehicle: opt.vehicle, brief: opt.brief,
         exec: deps.exec || ((c, a) => sh(cwd, c, a)), now });
-      stdout(`${r.roster}\n`);
+      stdout(`${r.name}\n${r.roster}\n`);
       return 0;
     },
     handback() {
@@ -571,5 +608,5 @@ function main(argv, deps = {}) {
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, launch,
+module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, tick, tickScope, main, proposal, paneName, delegateName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };
