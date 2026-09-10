@@ -156,20 +156,62 @@ function reconcile({ roster, agents = [] } = {}) {
   return actions;
 }
 
+// Performs what reconcile decided, and nothing it did not. Each action is
+// isolated: a rename against a pane that died between the listing and the call
+// must not strand the drops behind it, because a tick runs this every time and
+// a stranded correction is drift that never clears. Orphans are skipped here as
+// deliberately as they are reported there — adopting one would let a coordinator
+// claim the other's lane. Idempotent by construction: with the corrections made,
+// the next reconcile finds nothing, so nothing is performed and nothing audited.
+function applyDrift({ actions = [], commonDir, exec, audit, now }) {
+  const performed = [], failed = [];
+  const at = new Date(now || Date.now()).toISOString();
+  const dropped = new Map();
+  for (const a of actions) {
+    if (a.action === 'orphan') continue;
+    if (a.action === 'drop') { dropped.set(a.name, a); continue; } // performed under the lock below
+    if (a.action !== 'rename') continue;
+    try {
+      exec('herdr', ['agent', 'rename', a.agentId, a.to]);
+      performed.push(a);
+      audit({ by: 'reconcile', ...a, ts: at });
+    } catch (e) {
+      failed.push({ ...a, error: e.message });
+      audit({ by: 'reconcile', ...a, failed: true, error: e.message, ts: at });
+    }
+  }
+  // One roster write for all the drops: the file is shared with dispatch, so
+  // every rewrite is a chance to lose a row a delegate added meanwhile. Only
+  // rows that were actually there count as performed — a drop for a row already
+  // gone writes nothing and audits nothing, so replaying a tick is free.
+  if (dropped.size) {
+    const roster = path.join(commonDir, 'orch', 'fleet.json');
+    let hit = [];
+    withLock(path.join(commonDir, 'orch', 'fleet.lock'), () => {
+      let r = { delegates: [] };
+      try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { return; }
+      const keep = (r.delegates || []).filter(d => !dropped.has(d.name));
+      hit = (r.delegates || []).filter(d => dropped.has(d.name)).map(d => d.name);
+      if (!hit.length) return;
+      r.delegates = keep;
+      fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
+    });
+    for (const name of hit) { performed.push(dropped.get(name)); audit({ by: 'reconcile', ...dropped.get(name), ts: at }); }
+  }
+  return { performed, failed };
+}
+
 const roundOf = p => Number((/\.R(\d+)\.md$/.exec(p) || [0, 0])[1]);
 const verdictOf = text => (/^verdict:\s*(pass|fail|inconclusive)/m.exec(text || '') || [])[1] || null;
 
 // One tick, one action (spec §7 step 2). Pure: every source is an input.
-function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null, agents = null }) {
+function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null }) {
   const filesOf = g => filesOfDomains(lsFiles, contract, domainsOf(g.brief));
   const { pick: g, skipped } = pick({ goals, named, filesOf, scope });
   // Capacity is the FLEET's, not the Coordinator's: scoped Coordinators share
   // one roster and race for the same slots; the loser reports wait-capacity.
   const cap = capacityCheck(roster, capacity);
-  // Reported only: a tick tells the Director what disagrees and corrects nothing.
-  // No fleet listing means no evidence, which is not the same as every pane gone.
-  const drift = agents ? reconcile({ roster, agents }) : [];
-  const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, drift, stale: pulseAge(audit, now, scope) };
+  const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, stale: pulseAge(audit, now, scope) };
   if (!g) return { action: 'idle', ...out };
   const sessions = audit.filter(e => e.by === 'pulse' && e.goal === g.lane && e.action === 'dispatch').length;
   out.kill = killCheck(g.brief, sessions);
@@ -483,16 +525,28 @@ function main(argv, deps = {}) {
       let scope;
       try { scope = tickScope(opt, commonDir, deps.env || process.env); } catch (e) { stdout(`tick: ${e.message}
 `); return 1; }
+      // Correct BEFORE the tick reads the roster: a capacity count that includes
+      // delegates whose pane is gone is the ceiling this feature exists to fix.
+      const agents = readAgents(cwd, cfg, deps);
+      // A missing listing is no evidence, not an empty fleet: with no agents
+      // reconcile is skipped rather than run against nothing, which would drop
+      // every row in the roster.
+      const actions = agents ? reconcile({ roster: readRoster(commonDir), agents }) : [];
+      const corrected = applyDrift({ actions, commonDir, now,
+        exec: deps.exec || ((c, a) => sh(cwd, c, a)), audit: e => appendAudit(cwd, e) });
       let t;
       try {
         t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope, agents: readAgents(cwd, cfg, deps),
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope,
           worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
           manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
       } catch (e) { stdout(`tick: ${e.message}
 `); return 1; }
       if (!opt['no-pulse']) appendAudit(cwd, { by: 'pulse', goal: t.pick, action: t.action, tick: new Date(now).toISOString(), ...(scope ? { milestone: scope } : {}), ...(t.manifest ? { manifest: t.manifest.path } : {}) });
-      stdout(JSON.stringify(t, null, 2) + '\n');
+      // `drift` is what still disagrees AFTER the corrections: orphans, which are
+      // never adopted, and anything the rename failed on.
+      const done = new Set(corrected.performed);
+      stdout(JSON.stringify({ ...t, drift: actions.filter(a => !done.has(a)), corrected: corrected.performed, driftFailed: corrected.failed }, null, 2) + '\n');
       return 0;
     },
     proposal() {
@@ -656,5 +710,5 @@ function main(argv, deps = {}) {
 }
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, reconcile, tick, tickScope, main, proposal, paneName, delegateName, launch,
+module.exports = { EVIDENCE, milestoneOrdinal, briefLine, domainsOf, filesOfDomains, pick, killCheck, capacityCheck, readAudit, pulseAge, reconcile, applyDrift, tick, tickScope, main, proposal, paneName, delegateName, launch,
   noProgress, fixRound, verdictAction, handback, firstError, branchName, prText, milestoneSummary, fleetLines, outOfScope, anchorTest, sweepPlan, untriaged, TRIAGE_STATES, snapshot, wakeReason };

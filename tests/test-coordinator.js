@@ -300,11 +300,30 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
     return JSON.stringify([rs, ag]) === before;
   })());
 
-  // The Director sees it: a tick carries the report.
-  const t = C.tick({ goals: [], contract: { domains: {} }, lsFiles: [], audit: [], now: T0,
-    roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] }, agents: [pane('impl-hand-typed', 'p1')] });
-  check('a tick surfaces the drift report to the Director',
-    Array.isArray(t.drift) && t.drift.length === 1 && t.drift[0].action === 'rename');
+  // The tick corrects first, so what it reports as drift is what is LEFT.
+  check('a tick corrects the drift it found and reports what it corrected', (() => {
+    const fs2 = require('fs');
+    const S = path.join(__dirname, `scratch-coordinator-tickapply-${process.pid}`);
+    const CD = path.join(S, '.git');
+    fs2.mkdirSync(path.join(CD, 'orch'), { recursive: true });
+    process.on('exit', () => { try { fs2.rmSync(S, { recursive: true, force: true }); } catch {} });
+    fs2.writeFileSync(path.join(CD, 'orch', 'fleet.json'), JSON.stringify({ delegates: [
+      { name: 'gone', lane: 'G1', vehicle: 'herdr', status: 'running', agentId: 'p9' },
+      { name: 'impl-G1-S1', lane: 'G1', vehicle: 'herdr', status: 'running', agentId: 'p1' }] }));
+    let out = ''; const calls = [];
+    const code = C.main(['tick', '--no-pulse'], { cwd: S, commonDir: CD, stdout: x => { out += x; },
+      board: () => ({ goals: [] }), lsFiles: () => [], config: { contract: { domains: {} }, fleet: { capacity: 2 } },
+      exec: (c, a) => { calls.push([c, ...a]); return ''; }, now: T0,
+      fleetList: () => JSON.stringify({ result: { agents: [{ name: 'hand-typed', pane_id: 'p1' }, { name: 'impl-G9-S1', pane_id: 'p4' }] } }) });
+    const j = JSON.parse(out);
+    const rows = JSON.parse(fs2.readFileSync(path.join(CD, 'orch', 'fleet.json'), 'utf8')).delegates;
+    return code === 0
+      && rows.length === 1 && rows[0].name === 'impl-G1-S1'          // the dead row is gone
+      && calls.some(c => c[2] === 'rename' && c[4] === 'impl-G1-S1')  // the pane is renamed back
+      && j.corrected.length === 2
+      && j.drift.length === 1 && j.drift[0].action === 'orphan'       // what is LEFT: never adopted
+      && j.capacity.count === 1 && j.capacity.full === false;         // the ceiling stopped counting the dead
+  })());
   check('an unreachable herdr is no evidence, not an empty fleet', (() => {
     const boom = () => { throw new Error('herdr: not found'); };
     let out = '';
@@ -312,8 +331,69 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
       board: () => ({ goals: [] }), lsFiles: () => [], fleetList: boom, config: { contract: { domains: {} } }, now: T0 });
     return code === 0 && JSON.parse(out).drift.length === 0;
   })());
-  check('a tick with no fleet listing reports no drift rather than dropping every row',
-    (C.tick({ goals: [], contract: { domains: {} }, lsFiles: [], audit: [], now: T0, roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] } }).drift || []).length === 0);
+}
+
+// applyDrift: performing what reconcile reported, one audit line each.
+{
+  const fs2 = require('fs');
+  const SCRATCH = path.join(__dirname, `scratch-coordinator-apply-${process.pid}`);
+  const COMMON = path.join(SCRATCH, '.git');
+  fs2.mkdirSync(path.join(COMMON, 'orch'), { recursive: true });
+  process.on('exit', () => { try { fs2.rmSync(SCRATCH, { recursive: true, force: true }); } catch {} });
+  const rosterPath = path.join(COMMON, 'orch', 'fleet.json');
+  const write = delegates => fs2.writeFileSync(rosterPath, JSON.stringify({ delegates }, null, 2));
+  const read = () => JSON.parse(fs2.readFileSync(rosterPath, 'utf8')).delegates;
+  const row = (name, over = {}) => ({ name, lane: 'G1', vehicle: 'herdr', status: 'running', agentId: null, ...over });
+
+  let calls = [], lines = [];
+  const run = actions => { calls = []; lines = [];
+    return C.applyDrift({ actions, commonDir: COMMON, now: T0,
+      exec: (c, a) => { calls.push([c, ...a]); if (a[2] === 'boom') throw new Error('herdr: pane is gone'); return ''; },
+      audit: e => lines.push(e) }); };
+
+  write([row('gone', { agentId: 'p9' }), row('impl-G1-S1', { agentId: 'p1' })]);
+  let r = run([{ action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]);
+  check('a drop removes the row and leaves every other row alone',
+    read().length === 1 && read()[0].name === 'impl-G1-S1' && r.performed.length === 1);
+  check('a drop writes one audit line naming the row and the reason',
+    lines.length === 1 && lines[0].action === 'drop' && lines[0].name === 'gone' && /pane gone/.test(lines[0].why));
+
+  r = run([{ action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S1', why: 'label drifted from the roster' }]);
+  check('a rename drives herdr with the roster name and audits both labels',
+    JSON.stringify(calls) === JSON.stringify([['herdr', 'agent', 'rename', 'p1', 'impl-G1-S1']]) &&
+    lines.length === 1 && lines[0].from === 'impl-hand-typed' && lines[0].to === 'impl-G1-S1');
+
+  // Two coordinators share one fleet: adopting would steal the other's lane.
+  r = run([{ action: 'orphan', agentId: 'p4', name: 'impl-G9-S1', why: 'no roster row; never adopted' }]);
+  check('an orphan is never performed: nothing renamed, nothing removed, nothing audited',
+    calls.length === 0 && lines.length === 0 && r.performed.length === 0 && read().length === 1);
+
+  // Safe on every tick, not an occasional sweep.
+  r = run([]);
+  check('no drift performs nothing and writes no audit line',
+    calls.length === 0 && lines.length === 0 && r.performed.length === 0 && r.failed.length === 0);
+  const before = fs2.readFileSync(rosterPath, 'utf8');
+  run([{ action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]);
+  check('a second run of the same drop changes nothing (idempotent)',
+    fs2.readFileSync(rosterPath, 'utf8') === before && lines.length === 0);
+
+  // One dead pane must not strand the rest of the tick's corrections.
+  write([row('gone', { agentId: 'p9' }), row('impl-G1-S1', { agentId: 'p1' })]);
+  r = run([
+    { action: 'rename', agentId: 'boom', from: 'x', to: 'y', why: 'label drifted from the roster' },
+    { action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S1', why: 'label drifted from the roster' },
+    { action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]);
+  check('a rename that fails does not stop the actions behind it',
+    r.failed.length === 1 && r.performed.length === 2 && read().length === 1);
+  check('a failed action is reported with its error and audited as failed',
+    /pane is gone/.test(r.failed[0].error) && lines.filter(l => l.failed).length === 1);
+
+  // The ceiling stops counting delegates that no longer exist.
+  write([row('gone', { agentId: 'p9' }), row('impl-G1-S1', { agentId: 'p1' })]);
+  check('capacity counts the dead row until the drop is performed, and not after',
+    C.capacityCheck({ delegates: read() }, 2).full === true &&
+    (run([{ action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]),
+      C.capacityCheck({ delegates: read() }, 2).full === false));
 }
 // main: proposal prints the five lines and audits them; launch wires through.
 {
