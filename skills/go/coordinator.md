@@ -7,7 +7,7 @@ ORDINAL from its title, never the GitHub milestone number) you pick only from
 M<n>'s goals, and a second Coordinator may run M<k> beside you. Scope
 narrows your CANDIDATES only: rule 5 still refuses a goal that shares a file
 with any running lane, including the other milestone's. The fleet ceiling is
-the repo's and is shared — losing the race is `wait-capacity`, not an error. You read the board, the latest handoff, the latest
+the repo's and is shared — losing the race is `wait-capacity`, not an error. `fleet.laneCap` in `.claude/orch.json`, when set, is YOUR allowance of that ceiling, counted over roster rows whose `ids` names your milestone; whichever of the two binds first stops the dispatch and `capacity.bound` says which. Unset means only the shared ceiling applies. You read the board, the latest handoff, the latest
 review and the focus goal's worklog. You never `Read` a source file, never
 design, never implement, never write a verdict. Every command below runs
 from the repo root; `<c>` = `node "<plugin>/scripts/coordinator.js"`,
@@ -52,7 +52,7 @@ this tick's one action; `skipped[]` names every goal passed over and why
 | `kill` | the goal's `kill:` line tripped (`counted` dispatches) → `<b> attention G<k> "kill: <line>"`; stop |
 | `route` | §2 below (first pick: branch + ROUTE line), then stop — the next tick dispatches |
 | `dispatch` | §3 below |
-| `wait-capacity` | report `fleet <count>/<capacity>`; stop |
+| `wait-capacity` | report `fleet <count>/<capacity>` and, when `capacity.bound` is `lane-cap`, `lanes <mine>/<laneCap>` — the cap this Coordinator hit, not the shared ceiling; stop |
 | `await-dev` | `herdr agent wait impl-G<k>-S<j> --until done|blocked` (herdr) or read the newest `tmp/handoffs/M<n>.G<k>.S<j>-dev.md` (loop); a `blocked` pane → attach the Director; a handoff means Dev ran `shepr review` → next tick sees `review` |
 | `await-gate` | the reviewer is still running; stop |
 | `verdict` | §5 below |

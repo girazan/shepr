@@ -225,6 +225,8 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
     calls[1][3] === 'impl-G777-S3' && calls[2][3] === 'impl-G777-S3');
 
   C.launch({ commonDir: COMMON, cwd: REPO, role: 'dev', milestone: 'M53', goal: 'G777', step: 'S4', tier: 'mid', vehicle: 'loop', brief: BRIEF, exec, now: T0 });
+  check('the row records the ids the lane cap counts over',
+    (rows().find(x => x.name === 'impl-G777-S3') || {}).ids === 'M53.G777.S3');
   check('a delegate that occupies no pane records no pane id',
     (rows().find(x => x.name === 'impl-G777-S4') || {}).agentId === null);
 
@@ -331,6 +333,35 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
       board: () => ({ goals: [] }), lsFiles: () => [], fleetList: boom, config: { contract: { domains: {} } }, now: T0 });
     return code === 0 && JSON.parse(out).drift.length === 0;
   })());
+}
+
+// The per-coordinator lane cap: one milestone cannot take the whole fleet.
+{
+  const d = (ids, status = 'running') => ({ name: ids, ids, status, vehicle: 'herdr' });
+  const roster = { delegates: [d('M1.G1.S1'), d('M1.G2.S1'), d('M2.G9.S1'), d('M1.G3.S1', 'done')] };
+  check('with no cap configured a repository behaves exactly as it does today',
+    JSON.stringify(C.capacityCheck(roster, 6)) === JSON.stringify({ count: 3, capacity: 6, full: false, mine: null, laneCap: null, bound: null }));
+  check('a coordinator at its cap is full, and says the cap is what bound it',
+    C.capacityCheck(roster, 6, { scope: 'M1', laneCap: 2 }).full === true &&
+    C.capacityCheck(roster, 6, { scope: 'M1', laneCap: 2 }).bound === 'lane-cap');
+  check('a coordinator below its cap is unaffected',
+    C.capacityCheck(roster, 6, { scope: 'M2', laneCap: 2 }).full === false);
+  check('the cap counts only this coordinator lanes, and only counted statuses',
+    C.capacityCheck(roster, 6, { scope: 'M1', laneCap: 9 }).mine === 2);
+  // Whichever limit binds first stops the dispatch, and the report says which.
+  check('the shared ceiling still binds when it is the tighter of the two',
+    C.capacityCheck(roster, 3, { scope: 'M2', laneCap: 9 }).full === true &&
+    C.capacityCheck(roster, 3, { scope: 'M2', laneCap: 9 }).bound === 'fleet');
+  // Rows written before ids was recorded belong to no coordinator; counting them
+  // against one would make a cap of 2 unreachable on the live roster.
+  check('a row with no ids counts against the fleet but against no coordinator',
+    C.capacityCheck({ delegates: [d('M1.G1.S1'), { name: 'legacy', status: 'running' }] }, 6, { scope: 'M1', laneCap: 2 }).mine === 1);
+
+  const t = C.tick({ goals: [{ lane: 'G5', status: 'ready', items: [{ issue: 1, step: 'S1' }], brief: '', milestone: { title: 'M1 · a milestone' } }],
+    contract: { domains: {} }, lsFiles: [], audit: [], roster, capacity: 6, laneCap: 2, scope: 'M1', now: T0,
+    worklogOf: () => 'ROUTE: lane:G5 mid', manifestsOf: () => [] });
+  check('a tick at the lane cap declines to open another lane and names the reason',
+    t.action === 'wait-capacity' && t.capacity.bound === 'lane-cap');
 }
 
 // applyDrift: performing what reconcile reported, one audit line each.

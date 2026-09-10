@@ -96,9 +96,21 @@ function killCheck(brief, sessions) {
 
 // v2 §3.1: the counted-status predicate is exactly {reserved, running}.
 const COUNTED = new Set(['reserved', 'running']);
-function capacityCheck(roster, capacity = 6) {
-  const count = (((roster || {}).delegates) || []).filter(d => COUNTED.has(d.status)).length;
-  return { count, capacity, full: count >= capacity };
+// Two ceilings, and whichever binds first stops the dispatch. `capacity` is the
+// repository's and is shared, so the coordinator with ready work takes every
+// slot and the other starves; `laneCap` is this coordinator's own allowance,
+// counted over the rows whose `ids` name its milestone. A row with no `ids`
+// belongs to no coordinator: it counts against the fleet and against nobody's
+// cap, or every legacy row would make a small cap unreachable. Both null means
+// today's behaviour exactly — the cap is configuration, never a constant.
+function capacityCheck(roster, capacity = 6, { scope = null, laneCap = null } = {}) {
+  const rows = (((roster || {}).delegates) || []).filter(d => COUNTED.has(d.status));
+  const count = rows.length;
+  const mine = scope ? rows.filter(d => String(d.ids || '').split('.')[0] === scope).length : null;
+  const fleetFull = count >= capacity;
+  const capFull = laneCap != null && mine != null && mine >= laneCap;
+  return { count, capacity, full: fleetFull || capFull, mine, laneCap: laneCap == null ? null : laneCap,
+    bound: fleetFull ? 'fleet' : capFull ? 'lane-cap' : null };
 }
 
 function readAudit(root) {
@@ -205,12 +217,12 @@ const roundOf = p => Number((/\.R(\d+)\.md$/.exec(p) || [0, 0])[1]);
 const verdictOf = text => (/^verdict:\s*(pass|fail|inconclusive)/m.exec(text || '') || [])[1] || null;
 
 // One tick, one action (spec §7 step 2). Pure: every source is an input.
-function tick({ goals, named, contract, lsFiles, roster, audit, capacity, now, worklogOf, manifestsOf, scope = null }) {
+function tick({ goals, named, contract, lsFiles, roster, audit, capacity, laneCap = null, now, worklogOf, manifestsOf, scope = null }) {
   const filesOf = g => filesOfDomains(lsFiles, contract, domainsOf(g.brief));
   const { pick: g, skipped } = pick({ goals, named, filesOf, scope });
   // Capacity is the FLEET's, not the Coordinator's: scoped Coordinators share
   // one roster and race for the same slots; the loser reports wait-capacity.
-  const cap = capacityCheck(roster, capacity);
+  const cap = capacityCheck(roster, capacity, { scope, laneCap });
   const out = { pick: g ? g.lane : null, scope, skipped, capacity: cap, stale: pulseAge(audit, now, scope) };
   if (!g) return { action: 'idle', ...out };
   const sessions = audit.filter(e => e.by === 'pulse' && e.goal === g.lane && e.action === 'dispatch').length;
@@ -303,7 +315,9 @@ function launch({ commonDir, cwd, role, milestone, goal, step, tier, vehicle, br
     let r = { delegates: [] };
     try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { /* first entry */ }
     r.delegates = (r.delegates || []).filter(d => d.name !== name);
-    r.delegates.push({ name, lane: goal, role: tier, vehicle, status: 'running', ownerSessionId: null, agentId, brief, createdAt: startedAt, lastSeen: startedAt });
+    // `ids` is what the per-coordinator lane cap counts over: without it a row
+    // belongs to no milestone and no cap can ever bind.
+    r.delegates.push({ name, lane: goal, role: tier, orchRole: role, ids: [milestone, goal, step].filter(Boolean).join('.'), vehicle, status: 'running', ownerSessionId: null, agentId, brief, createdAt: startedAt, lastSeen: startedAt });
     fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
   });
   if (vehicle === 'herdr') {
@@ -485,6 +499,9 @@ function tickScope(opt, commonDir, env) {
   const marker = readMarker(commonDir, sid);
   return (marker && marker.milestone) || null;
 }
+// A scope the caller did not ask about: a malformed one is not worth failing a
+// proposal over, and null simply means no per-coordinator cap is counted.
+function scopeOrNull(opt, commonDir, deps) { try { return tickScope(opt, commonDir, deps.env || process.env); } catch { return null; } }
 // The live fleet, or null when herdr cannot be reached. null is "no evidence",
 // which reconcile must not confuse with "every pane is gone".
 function readAgents(cwd, cfg, deps) {
@@ -537,7 +554,7 @@ function main(argv, deps = {}) {
       let t;
       try {
         t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, now, scope,
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, laneCap: (cfg.fleet && cfg.fleet.laneCap) || null, now, scope,
           worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
           manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
       } catch (e) { stdout(`tick: ${e.message}
@@ -553,7 +570,7 @@ function main(argv, deps = {}) {
       const need = ['goal', 'step', 'item', 'text', 'role', 'tier', 'recipe', 'task', 'domains', 'ship', 'review'];
       for (const k of need) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`proposal: --${k} <value> is required\n`); return 1; }
       const p = { ...opt, domains: opt.domains.split(/[,\s]+/).filter(Boolean), fails: Number(opt.fails || 0), kill: typeof opt.kill === 'string' ? opt.kill : null,
-        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6) };
+        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6, { scope: scopeOrNull(opt, commonDir, deps), laneCap: (cfg.fleet && cfg.fleet.laneCap) || null }) };
       const lines = proposal(p).split('\n');
       appendAudit(cwd, { by: 'dispatch', mode: opt.mode === 'auto' ? 'auto' : 'confirm', goal: opt.goal, step: opt.step, lines });
       stdout(lines.join('\n') + '\n');
