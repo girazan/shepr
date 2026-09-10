@@ -178,7 +178,7 @@ check('work states the fix-round rule', work.includes('Fix rounds count `fail` m
 check('work says inconclusive rounds do not count', work.includes('Inconclusive rounds do not count.'));
 check('go uses done --goal --step and never bare done', go.includes('done --goal G<n> --step S<j> <item#>') && !go.includes('`done <issue#>`'));
 check('board renders unverified merged goals', board.includes('unverified'));
-check('README names the evidence lint and the worktree allowlist', readme.includes('evidence lint') && readme.includes('orch/wt/'));
+check('README records that the domain ship gate was retired in 0.14.0', readme.includes('retired in 0.14.0'));
 
 // 10. Coordinator (plan 5) — vehicles, proposal, branch/pane grammars, pulse, brief opening.
 check('go names the three vehicles once', go.includes('`native | loop | herdr`'));

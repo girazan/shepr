@@ -82,15 +82,12 @@ There is no bare `/orch` — always one of these seven. [Architecture diagram �
 
 | Hook | Plain meaning |
 |---|---|
-| 🚢 `contract-ship-gate` | Deny-by-default git surface: every command is refused unless it's read/local or a `commit`/`push` your contract covers — judged by what's actually in your repo, never by the command's arguments. Evidence lint at `board-gh done --goal --step` / `close-goal`: the round manifest chain under `docs/reviews/` is re-derived from git and the locked contract (enforced with a lock entry, advisory without). Worklogs, reviews and ADRs carry a built-in `commit` grant; `git worktree add --detach`/`remove` are allowed only under `<git-common-dir>/orch/wt/` (the review script's test worktrees), plus full `add [-b <branch>] <path> [<ref>]`/`remove` under any repo-relative root listed in `workflow.worktreeRoots` (e.g. `[".worktrees"]`); with `workflow.laneRebase: true` a lane may also `git rebase` its own non-default branch from inside such a worktree. |
 | 💣 `block-destructive-git` | No `push --force`, `reset --hard`, branch deletion, `gh pr merge`, or mutating `gh api`. Two exceptions you grant: `destructiveGit.mergeBases` (e.g. `["autopilot/*"]`) lets `gh pr merge <n>` through onto a matching non-default branch — the `/shepr:auto` integration branch; and a domain's `ship: merge` lets it through onto the default branch when every PR file is in a merge domain, the body carries Suite/Metric/Baseline/Closes, and the review the item's recipe demands exists at the PR head (`hooks/lib/merge-check.js`). A refusal names the missing piece. |
 | 🔒 `block-protected-dirs` | Folders you declare untouchable stay untouchable. |
-| 🔍 `read-before-write` | First edit to a critical file is refused until the AI states callers, the test that'd catch a mistake, and the number justifying it. |
 | 🧹 `session-hygiene` | No clocking out of a heavy session without writing down what happened. |
 | 📡 `fleet-context` | Watches your *delegates'* fuel gauges, not just your own: one alert per band as an agent burns context, telling you to bank its state before autocompaction takes the choice away. Point it at any fleet CLI. |
 | ⛽ `context-monitor` | Low-fuel gauge: one "finish up" warning, one "save state now". Each fires once. |
 | 🔄 `run-on-commit` | Re-runs a command you choose after each commit, so derived artifacts never go stale. |
-| 🎭 `role-guardrails` | With `ORCH_ROLE` set on a pane: a reviewer edits only `docs/reviews/`, nobody else writes there, the coordinator reads only handoffs/reviews/config/its goal's worklog, the architect writes no contract-domain path, the dev never rewrites the worklog's BRIEF. Advisory — the role is an environment variable. |
 | 🪪 `session-start` | Turns a pane's `ORCH_ROLE`/`ORCH_IDS` into a session marker so the other two know who is working on what since when. |
 | 📝 `stop-handoff` | A roled pane that edited anything may not stop until its handoff file exists (`tmp/handoffs/…`), once; over-budget handoffs and plan sections get one advisory line. |
 
@@ -115,7 +112,7 @@ alone, surfacing every session until you ratify or reject them.
 
 Everything in `.claude/orch.json` is optional; hooks with no config no-op.
 `block-destructive-git` and `context-monitor` are on by default;
-`contract-ship-gate` activates with a `contract` block — except that a
+The domain ship gate (`contract-ship-gate`, `read-before-write`, `role-guardrails`) was retired in 0.14.0 (2026-09-10): GitHub branch protection and CODEOWNERS hold the line instead, and `.orch` roles are advisory text. `block-destructive-git` and `block-protected-dirs` remain. The former gate activated with a `contract` block — except that a
 corrupt `orch.json` blocks shipping until fixed, since a broken config must
 never silently disable a guard.
 

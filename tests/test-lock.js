@@ -5,7 +5,6 @@ const fs = require('fs');
 const path = require('path');
 
 const HOOK = path.join(__dirname, '..', 'hooks', 'block-destructive-git.js');
-const SHIPHOOK = path.join(__dirname, '..', 'hooks', 'contract-ship-gate.js');
 const SCRATCH = path.join(__dirname, 'scratch-lock');
 const FAKEHOME = path.join(SCRATCH, 'home');
 const PROJ = path.join(SCRATCH, 'proj');
@@ -19,14 +18,6 @@ function run(cmd, sid) {
   const payload = JSON.stringify({ session_id: sid, cwd: PROJ, tool_input: { command: cmd } });
   try {
     execFileSync('node', [HOOK], { input: payload,
-      env: { ...process.env, USERPROFILE: FAKEHOME, HOME: FAKEHOME }, stdio: ['pipe', 'pipe', 'pipe'] });
-    return 0;
-  } catch (e) { return e.status; }
-}
-function runShip(cmd, sid) {
-  const payload = JSON.stringify({ session_id: sid, cwd: PROJ, tool_input: { command: cmd } });
-  try {
-    execFileSync('node', [SHIPHOOK], { input: payload,
       env: { ...process.env, USERPROFILE: FAKEHOME, HOME: FAKEHOME }, stdio: ['pipe', 'pipe', 'pipe'] });
     return 0;
   } catch (e) { return e.status; }
@@ -49,7 +40,6 @@ check('lock overrides project disable', run(CMD, 't3') === 2);
 fs.writeFileSync(LOCK, '{ not json');
 check('corrupt lock FAILS CLOSED (v0.7.0 breaking change)', run(CMD, 't4') === 2);
 check('corrupt lock blocks even benign git while unrecoverable', run('git status', 't4b') === 2);
-check('corrupt lock blocks ship-gate on benign command too', runShip('git status', 't4c') === 2);
 fs.writeFileSync(PROJCFG, JSON.stringify({
   destructiveGit: { enabled: true, extraPatterns: [{ pattern: 'taskkill\\s+/f', name: 'mass kill' }] } }));
 fs.writeFileSync(LOCK, JSON.stringify({ destructiveGit: { enabled: true } }));

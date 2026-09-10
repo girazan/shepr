@@ -1,5 +1,5 @@
 {
-  "description": "shepr guardrails \u2014 deterministic enforcement around agent tool use",
+  "description": "shepr guardrails - destructive-git and protected-dirs only; the domain ship gate was retired 2026-09-10 (branch protection + CODEOWNERS replace it)",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,11 +8,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-git.js\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/contract-ship-gate.js\"",
             "timeout": 10
           }
         ]
@@ -23,21 +18,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/block-protected-dirs.js\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/read-before-write.js\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/role-guardrails.js\"",
             "timeout": 10
           }
         ]
