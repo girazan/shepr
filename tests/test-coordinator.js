@@ -389,6 +389,19 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
   check('a drop writes one audit line naming the row and the reason',
     lines.length === 1 && lines[0].action === 'drop' && lines[0].name === 'gone' && /pane gone/.test(lines[0].why));
 
+  // Both coordinators derive the SAME name for the same goal and step, and the
+  // drop was decided before the listing: a name match lets one delete the row
+  // the other just wrote, whose pane keeps running and is never adopted.
+  write([row('impl-G1-S1', { agentId: 'p-mine' })]);
+  r = run([{ action: 'drop', name: 'impl-G1-S1', agentId: 'p-theirs', why: 'pane gone' }]);
+  check('a drop never removes a row that shares the name but not the pane',
+    read().length === 1 && r.performed.length === 0 && lines.length === 0);
+  // Reconcile could not tell a dead row from a live one renamed by hand.
+  r = run([{ action: 'drop', name: 'impl-G1-S1', agentId: null, why: 'no pane id, and no pane carries this name' }]);
+  check('a drop with no pane identifier is reported and never performed',
+    read().length === 1 && r.performed.length === 0 && lines.length === 0);
+
+  write([row('gone', { agentId: 'p9' }), row('impl-G1-S1', { agentId: 'p1' })]);
   r = run([{ action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S1', why: 'label drifted from the roster' }]);
   check('a rename drives herdr with the roster name and audits both labels',
     JSON.stringify(calls) === JSON.stringify([['herdr', 'agent', 'rename', 'p1', 'impl-G1-S1']]) &&
@@ -397,12 +410,13 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
   // Two coordinators share one fleet: adopting would steal the other's lane.
   r = run([{ action: 'orphan', agentId: 'p4', name: 'impl-G9-S1', why: 'no roster row; never adopted' }]);
   check('an orphan is never performed: nothing renamed, nothing removed, nothing audited',
-    calls.length === 0 && lines.length === 0 && r.performed.length === 0 && read().length === 1);
+    calls.length === 0 && lines.length === 0 && r.performed.length === 0 && read().length === 2);
 
   // Safe on every tick, not an occasional sweep.
   r = run([]);
   check('no drift performs nothing and writes no audit line',
     calls.length === 0 && lines.length === 0 && r.performed.length === 0 && r.failed.length === 0);
+  run([{ action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]);
   const before = fs2.readFileSync(rosterPath, 'utf8');
   run([{ action: 'drop', name: 'gone', agentId: 'p9', why: 'pane gone' }]);
   check('a second run of the same drop changes nothing (idempotent)',

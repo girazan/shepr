@@ -109,7 +109,7 @@ function capacityCheck(roster, capacity = 6, { scope = null, laneCap = null } = 
   const mine = scope ? rows.filter(d => String(d.ids || '').split('.')[0] === scope).length : null;
   const fleetFull = count >= capacity;
   const capFull = laneCap != null && mine != null && mine >= laneCap;
-  return { count, capacity, full: fleetFull || capFull, mine, laneCap: laneCap == null ? null : laneCap,
+  return { count, capacity, full: fleetFull || capFull, mine, laneCap,
     bound: fleetFull ? 'fleet' : capFull ? 'lane-cap' : null };
 }
 
@@ -175,14 +175,38 @@ function reconcile({ roster, agents = [] } = {}) {
 // deliberately as they are reported there — adopting one would let a coordinator
 // claim the other's lane. Idempotent by construction: with the corrections made,
 // the next reconcile finds nothing, so nothing is performed and nothing audited.
+// The one place the shared roster is rewritten. `fn` receives the parsed roster
+// and returns it to write, or null to leave the file untouched; both
+// coordinators and every dispatch race for this file, so the read has to happen
+// inside the lock, not before it.
+function updateRoster(commonDir, fn) {
+  const dir = path.join(commonDir, 'orch');
+  fs.mkdirSync(dir, { recursive: true });
+  const roster = path.join(dir, 'fleet.json');
+  withLock(path.join(dir, 'fleet.lock'), () => {
+    let r = { delegates: [] };
+    try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { /* first entry */ }
+    const next = fn(r);
+    if (next) fs.writeFileSync(roster, JSON.stringify(next, null, 2) + '\n');
+  });
+  return roster;
+}
+
+// A drop is matched by PANE IDENTIFIER, never by name. Both coordinators share
+// one roster and both derive the same name for the same goal and step, and the
+// drop was decided against a read taken before the pane listing and every
+// rename — so a name match lets M1 delete the row M2 wrote a second ago, whose
+// pane keeps running, is never adopted, and stops counting against capacity.
+// A drop with no identifier is REPORTED and not performed: reconcile could not
+// tell a dead row from a live one whose label was changed by hand, and evicting
+// a running lane is not a mistake a tick may make on its own.
 function applyDrift({ actions = [], commonDir, exec, audit, now }) {
   const performed = [], failed = [];
   const at = new Date(now || Date.now()).toISOString();
   const dropped = new Map();
   for (const a of actions) {
-    if (a.action === 'orphan') continue;
-    if (a.action === 'drop') { dropped.set(a.name, a); continue; } // performed under the lock below
-    if (a.action !== 'rename') continue;
+    if (a.action === 'drop') { if (a.agentId) dropped.set(a.agentId, a); continue; } // performed under the lock below
+    if (a.action !== 'rename') continue; // an orphan is reported, never adopted
     try {
       exec('herdr', ['agent', 'rename', a.agentId, a.to]);
       performed.push(a);
@@ -197,18 +221,15 @@ function applyDrift({ actions = [], commonDir, exec, audit, now }) {
   // rows that were actually there count as performed — a drop for a row already
   // gone writes nothing and audits nothing, so replaying a tick is free.
   if (dropped.size) {
-    const roster = path.join(commonDir, 'orch', 'fleet.json');
+    const idOf = d => d.agentId || d.pane || null;
     let hit = [];
-    withLock(path.join(commonDir, 'orch', 'fleet.lock'), () => {
-      let r = { delegates: [] };
-      try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { return; }
-      const keep = (r.delegates || []).filter(d => !dropped.has(d.name));
-      hit = (r.delegates || []).filter(d => dropped.has(d.name)).map(d => d.name);
-      if (!hit.length) return;
-      r.delegates = keep;
-      fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
+    updateRoster(commonDir, r => {
+      hit = (r.delegates || []).filter(d => dropped.has(idOf(d)));
+      if (!hit.length) return null; // nothing to write
+      r.delegates = (r.delegates || []).filter(d => !dropped.has(idOf(d)));
+      return r;
     });
-    for (const name of hit) { performed.push(dropped.get(name)); audit({ by: 'reconcile', ...dropped.get(name), ts: at }); }
+    for (const d of hit) { const a = dropped.get(idOf(d)); performed.push(a); audit({ by: 'reconcile', ...a, ts: at }); }
   }
   return { performed, failed };
 }
@@ -301,24 +322,19 @@ const delegateName = (role, goal, step) =>
 // drops it, while a pane with no row is not — reconcile reports an orphan and
 // never adopts one, by design, so it would leak a real pane forever.
 function launch({ commonDir, cwd, role, milestone, goal, step, tier, vehicle, brief, exec, now }) {
-  const dir = path.join(commonDir, 'orch');
-  fs.mkdirSync(dir, { recursive: true });
   const startedAt = new Date(now || Date.now()).toISOString();
-  const roster = path.join(dir, 'fleet.json');
   const name = delegateName(role, goal, step);
+  const ids = [milestone, goal, step].filter(Boolean).join('.');
   let agentId = null;
   if (vehicle === 'herdr') {
-    const ids = [milestone, goal, step].filter(Boolean).join('.');
     agentId = String(exec('herdr', ['pane', 'split', '--cwd', cwd || process.cwd(), '--env', `ORCH_ROLE=${role}`, '--env', `ORCH_IDS=${ids}`])).trim();
   }
-  withLock(path.join(dir, 'fleet.lock'), () => {
-    let r = { delegates: [] };
-    try { r = JSON.parse(fs.readFileSync(roster, 'utf8')); } catch { /* first entry */ }
+  // `ids` is what the per-coordinator lane cap counts over: without it a row
+  // belongs to no milestone and no cap can ever bind.
+  const roster = updateRoster(commonDir, r => {
     r.delegates = (r.delegates || []).filter(d => d.name !== name);
-    // `ids` is what the per-coordinator lane cap counts over: without it a row
-    // belongs to no milestone and no cap can ever bind.
-    r.delegates.push({ name, lane: goal, role: tier, orchRole: role, ids: [milestone, goal, step].filter(Boolean).join('.'), vehicle, status: 'running', ownerSessionId: null, agentId, brief, createdAt: startedAt, lastSeen: startedAt });
-    fs.writeFileSync(roster, JSON.stringify(r, null, 2) + '\n');
+    r.delegates.push({ name, lane: goal, role: tier, orchRole: role, ids, vehicle, status: 'running', ownerSessionId: null, agentId, brief, createdAt: startedAt, lastSeen: startedAt });
+    return r;
   });
   if (vehicle === 'herdr') {
     exec('herdr', ['agent', 'start', name, '--kind', 'claude', '--pane', agentId]);
@@ -554,7 +570,7 @@ function main(argv, deps = {}) {
       let t;
       try {
         t = tick({ goals: b.goals, named: pos[1], contract: cfg.contract || { domains: {} }, lsFiles, roster: readRoster(commonDir), audit: readAudit(cwd),
-          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, laneCap: (cfg.fleet && cfg.fleet.laneCap) || null, now, scope,
+          capacity: (cfg.fleet && cfg.fleet.capacity) || 6, laneCap: (cfg.fleet && cfg.fleet.laneCap) ?? null, now, scope,
           worklogOf: g => { const p = worklogPath(cwd, g.lane); return p ? fs.readFileSync(p, 'utf8') : ''; },
           manifestsOf: (g, step) => (step ? manifestsFor(cwd, g.lane, step.step) : []) });
       } catch (e) { stdout(`tick: ${e.message}
@@ -570,7 +586,7 @@ function main(argv, deps = {}) {
       const need = ['goal', 'step', 'item', 'text', 'role', 'tier', 'recipe', 'task', 'domains', 'ship', 'review'];
       for (const k of need) if (typeof opt[k] !== 'string' || !opt[k]) { stdout(`proposal: --${k} <value> is required\n`); return 1; }
       const p = { ...opt, domains: opt.domains.split(/[,\s]+/).filter(Boolean), fails: Number(opt.fails || 0), kill: typeof opt.kill === 'string' ? opt.kill : null,
-        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6, { scope: scopeOrNull(opt, commonDir, deps), laneCap: (cfg.fleet && cfg.fleet.laneCap) || null }) };
+        fleet: capacityCheck(readRoster(commonDir), (cfg.fleet && cfg.fleet.capacity) || 6, { scope: scopeOrNull(opt, commonDir, deps), laneCap: (cfg.fleet && cfg.fleet.laneCap) ?? null }) };
       const lines = proposal(p).split('\n');
       appendAudit(cwd, { by: 'dispatch', mode: opt.mode === 'auto' ? 'auto' : 'confirm', goal: opt.goal, step: opt.step, lines });
       stdout(lines.join('\n') + '\n');
