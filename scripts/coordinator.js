@@ -117,27 +117,35 @@ function pulseAge(audit, now = Date.now(), scope = null) {
 }
 
 // --- reconcile: the roster vs the live fleet (spec: herdr naming) -------------------
-// A pane name shepr could have written: the three delegate grammars in
-// delegate.md. Every other pane in the fleet belongs to the Director or to
-// another tool and is none of this coordinator's business.
-const SHEPR_PANE = /^(impl-.|arch-.|coord$)/;
+// A pane name shepr could have written: the DISPATCHED grammars delegateName
+// produces, spelled exactly rather than loosely, so a name this does not
+// recognise is one delegateName would not have written. `coord` is absent on
+// purpose — a Coordinator pane is started by the Director and has no roster
+// row, so treating it as an orphan would make every tick report itself.
+// Every other pane belongs to the Director or another tool: not our business.
+const SHEPR_PANE = /^(impl-G\d+(-S\d+)?|arch-G\d+)$/;
 // Pure by design: it reads nothing and performs nothing, so the whole decision
 // matrix is testable without a fleet. The caller performs the actions.
-// Rows match panes by agentId, falling back to the name for rows written before
-// agentId was recorded — without the fallback every legacy row reports as a drop
-// on the first run. A delegate that occupies no pane (loop, subprocess) is never
-// drift; its row is a different kind of fossil and reconcile does not own it.
+// Rows match panes by identifier — `agentId`, or the `pane` a hand-written row
+// used before agentId was populated — and fall back to the name for a row that
+// records neither. Without the fallback every legacy row reports as a drop on
+// the first run; with it, a row that has no identifier AND whose label drifted
+// is indistinguishable from a dead one, so its drop says so and ticket 04 can
+// refuse to act on a drop it cannot prove. A delegate that occupies no pane
+// (loop, subprocess) is never drift; that row is a different kind of fossil,
+// and reconcile does not own it.
 function reconcile({ roster, agents = [] } = {}) {
   const rows = (((roster || {}).delegates) || []).filter(d => d.vehicle === 'herdr');
   const byId = new Map(agents.filter(a => a.pane_id).map(a => [a.pane_id, a]));
   const byName = new Map(agents.filter(a => a.name).map(a => [a.name, a]));
   const actions = []; const claimed = new Set();
   for (const d of rows) {
-    const pane = d.agentId ? byId.get(d.agentId) : byName.get(d.name);
-    if (!pane) { actions.push({ action: 'drop', name: d.name, agentId: d.agentId || null, why: 'pane gone' }); continue; }
-    claimed.add(pane.pane_id);
+    const id = d.agentId || d.pane || null;
+    const pane = id ? byId.get(id) : byName.get(d.name);
+    if (!pane) { actions.push({ action: 'drop', name: d.name, agentId: id, why: id ? 'pane gone' : 'no pane id, and no pane carries this name' }); continue; }
+    if (pane.pane_id) claimed.add(pane.pane_id); // an undefined id would claim every other id-less pane
     // The roster is authoritative: something renamed the pane, or started it by hand.
-    if (pane.name !== d.name) actions.push({ action: 'rename', agentId: pane.pane_id, from: pane.name || null, to: d.name });
+    if (pane.name !== d.name) actions.push({ action: 'rename', agentId: pane.pane_id, from: pane.name || null, to: d.name, why: 'label drifted from the roster' });
   }
   // Reported, never adopted: two coordinators share one fleet, and the pane may
   // be the other one's, the Director's, or a lane started by hand.
@@ -576,14 +584,9 @@ function main(argv, deps = {}) {
     wait() {
       const timeout = Number(opt.timeout || (cfg.fleet && cfg.fleet.waitTimeoutSeconds) || 1800) * 1000;
       const poll = Math.max(5, Number(opt.poll || (cfg.fleet && cfg.fleet.waitPollSeconds) || 20)) * 1000;
-      const listCmd = (cfg.fleetContext && cfg.fleetContext.listCmd) || 'herdr agent list';
       const read = () => {
-        let agents = [], rulings = [], reviews = 0, inbox = [];
-        try {
-          const out = deps.fleetList ? deps.fleetList() : sh(cwd, listCmd.split(' ')[0], listCmd.split(' ').slice(1));
-          const j = JSON.parse(out);
-          agents = (j.result && j.result.agents) || j.agents || [];
-        } catch {}
+        let rulings = [], reviews = 0, inbox = [];
+        const agents = readAgents(cwd, cfg, deps) || []; // a watcher with no fleet waits on nothing
         const roster = (readRoster(commonDir).delegates || []).map(d => d.name);
         try { rulings = JSON.parse(fs.readFileSync(path.join(cwd, '.orch', 'owner-queue.json'), 'utf8')).rulings || []; } catch {}
         try { reviews = fs.readdirSync(path.join(cwd, 'docs', 'reviews')).filter(f => /\.md$/.test(f)).length; } catch {}

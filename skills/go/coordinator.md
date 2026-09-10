@@ -159,4 +159,4 @@ start it: `node "<plugin>/scripts/telegram.js" poll > tmp/telegram-poll.log` det
 
 ## Every tick ends
 
-Report ≤5 lines: `tick: <action> · G<k> S<j> · fleet <count>/<capacity> · pulse <age>m`, then the skipped goals, then what the Director owes (attention items, a push, a merge). Under `loop`, stop — the next `/loop` invocation is the next tick.
+Report ≤5 lines: `tick: <action> · G<k> S<j> · fleet <count>/<capacity> · pulse <age>m`, then the skipped goals, then `drift:` — one line per entry in the tick's `drift` array, or nothing when it is empty. Drift is REPORTED and never acted on: a `drop` is a roster row whose pane is gone, a `rename` is a pane whose label left its row, an `orphan` is a shepr-named pane with no row, which may be the other Coordinator's and is never adopted. Then what the Director owes (attention items, a push, a merge). Under `loop`, stop — the next `/loop` invocation is the next tick.

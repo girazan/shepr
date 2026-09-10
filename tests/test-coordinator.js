@@ -271,17 +271,25 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
   // The roster is authoritative: the pane is what is wrong.
   check('a pane whose label drifted is reported as a rename, naming both labels',
     JSON.stringify(R([row('impl-G1-S2', { agentId: 'p1' })], [pane('impl-hand-typed', 'p1')])) ===
-      JSON.stringify([{ action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S2' }]));
+      JSON.stringify([{ action: 'rename', agentId: 'p1', from: 'impl-hand-typed', to: 'impl-G1-S2', why: 'label drifted from the roster' }]));
   // Two coordinators share one fleet; adopting would let one steal the other's lane.
-  const orphans = R([], [pane('impl-G9-S1', 'p2'), pane('arch-G9', 'p3'), pane('coord', 'p4')]);
+  const orphans = R([], [pane('impl-G9-S1', 'p2'), pane('arch-G9', 'p3')]);
   check('a shepr-shaped pane with no row is reported as an orphan, never adopted',
-    orphans.length === 3 && orphans.every(a => a.action === 'orphan') && !orphans.some(a => /adopt|claim/.test(a.action)));
+    orphans.length === 2 && orphans.every(a => a.action === 'orphan') && !orphans.some(a => /adopt|claim/.test(a.action)));
+  // The grammar is spelled exactly: a loose one would report the Director's panes
+  // and, via `coord`, every tick would report itself.
   check('a pane the Director named is not this coordinator business',
-    R([], [pane('coordinator-c1', 'p5'), pane('scratch', 'p6')]).length === 0);
+    R([], [pane('coordinator-c1', 'p5'), pane('scratch', 'p6'), pane('coord', 'p4'), pane('impl-tvt', 'p8')]).length === 0);
   check('a delegate that occupies no pane is never drift',
     R([row('impl-G1-S1', { vehicle: 'loop' }), row('rev-G1', { vehicle: 'subprocess', status: 'done' })], []).length === 0);
   // Rows written before agentId existed carry none; match them by name or every
   // one of them reports as a drop the first time reconcile runs.
+  // Rows written by hand recorded the id under `pane`, not `agentId`.
+  check('a row recording its pane under the legacy pane field still matches by identifier',
+    R([row('impl-r58', { pane: 'p7' })], [pane('impl-r58', 'p7')]).length === 0 &&
+    R([row('impl-r58', { pane: 'p7' })], [pane('drifted', 'p7')])[0].action === 'rename');
+  check('a row with no identifier at all says so, so 04 cannot act on a drop it cannot prove',
+    /no pane id/.test(R([row('impl-gone')], [])[0].why));
   check('a row with no pane id matches its pane by name',
     R([row('impl-r58')], [pane('impl-r58', 'p7')]).length === 0 &&
     R([row('impl-r58')], [pane('impl-tvt', 'p7')])[0].action === 'drop');
@@ -297,6 +305,13 @@ check('paneName with no step is impl-G<k>, never impl-G<k>-undefined', C.paneNam
     roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] }, agents: [pane('impl-hand-typed', 'p1')] });
   check('a tick surfaces the drift report to the Director',
     Array.isArray(t.drift) && t.drift.length === 1 && t.drift[0].action === 'rename');
+  check('an unreachable herdr is no evidence, not an empty fleet', (() => {
+    const boom = () => { throw new Error('herdr: not found'); };
+    let out = '';
+    const code = C.main(['tick', '--no-pulse'], { cwd: __dirname, commonDir: __dirname, stdout: s => { out += s; },
+      board: () => ({ goals: [] }), lsFiles: () => [], fleetList: boom, config: { contract: { domains: {} } }, now: T0 });
+    return code === 0 && JSON.parse(out).drift.length === 0;
+  })());
   check('a tick with no fleet listing reports no drift rather than dropping every row',
     (C.tick({ goals: [], contract: { domains: {} }, lsFiles: [], audit: [], now: T0, roster: { delegates: [row('impl-G1-S1', { agentId: 'p1' })] } }).drift || []).length === 0);
 }
