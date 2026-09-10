@@ -11,3 +11,7 @@ The five canonical names, unchanged (`needs-triage`, `needs-info`, `ready-for-ag
 ### Domain docs
 
 Single-context: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
+### Fleet layout
+
+Workspace `M<n> - <Repo>`, coordinator on its own tab, milestone never repeated in the pane label. See `docs/fleet-layout.md`.
